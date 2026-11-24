@@ -99,6 +99,15 @@ capture haseen syncthing dismiss-folder music "$PEER"
 assert_eq "dismiss-folder" "DELETE /rest/cluster/pending/folders?folder=music&device=$PEER" "$(tail -1 "$LOG")"
 capture haseen syncthing accept-folder music "$PEER" /srv/sync/music Music
 assert_eq "accept-folder: a new folder shared with the offering device" "POST /rest/config/folders {\"id\":\"music\",\"label\":\"Music\",\"path\":\"/srv/sync/music\",\"devices\":[{\"deviceID\":\"$PEER\"}]}" "$(tail -1 "$LOG")"
+# A peer chooses folder labels and device names; after "--" one that reads
+# like an option is still the label or the name (plan 199).
+capture haseen syncthing accept-folder -- newfolder "$PEER" /srv/sync/x --dry-run
+assert_eq "accept-folder: a label after -- is never --dry-run" "0|POST /rest/config/folders {\"id\":\"newfolder\",\"label\":\"--dry-run\",\"path\":\"/srv/sync/x\",\"devices\":[{\"deviceID\":\"$PEER\"}]}" "$STATUS|$(tail -1 "$LOG")"
+capture haseen syncthing accept-device -- "$NEW" -h
+assert_eq "accept-device: a name after -- is never -h" "0|POST /rest/config/devices {\"deviceID\":\"$NEW\",\"name\":\"-h\"}" "$STATUS|$(tail -1 "$LOG")"
+service="$(cat "$PLUGIN/Service.qml")"
+assert_contains "the panel ends the options before a peer's device name" "$service" 'run(["accept-device", "--", id, name]'
+assert_contains "and before a peer's folder label" "$service" 'run(["accept-folder", "--", f.id, f.device, p, f.label]'
 capture haseen syncthing add-folder /srv/sync/notes --share "$PEER"
 assert_status "add-folder succeeds" 0 "$STATUS"
 assert_eq "add-folder: label from the path, a Syncthing-shaped id, shared" '"notes" true "/srv/sync/notes" 1' \

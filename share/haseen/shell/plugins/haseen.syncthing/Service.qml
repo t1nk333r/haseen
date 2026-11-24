@@ -98,7 +98,8 @@ Scope {
     }
 
     function acceptDevice(id: string, name: string): bool {
-        return run(["accept-device", id, name], I18n.mark("Device added"));
+        // "--": the name is the peer's, and "-h" or "--dry-run" is a name too.
+        return run(["accept-device", "--", id, name], I18n.mark("Device added"));
     }
 
     function dismissDevice(id: string): bool {
@@ -111,7 +112,8 @@ Scope {
             root.say(I18n.mark("Enter a full path, such as ~/Sync"), true);
             return false;
         }
-        return run(["accept-folder", f.id, f.device, p, f.label], I18n.mark("Folder accepted"));
+        // "--": the label is the peer's, so it must never read as an option.
+        return run(["accept-folder", "--", f.id, f.device, p, f.label], I18n.mark("Folder accepted"));
     }
 
     function dismissFolder(f: var): bool {

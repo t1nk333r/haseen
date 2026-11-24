@@ -45,7 +45,11 @@ while IFS= read -r dir; do
     id="${dir##*/}"
     [[ $id == .* ]] && continue
     # A plugin installed from a registry is a symlink into .repos/<hash>; its
-    # git checkout is what carries the repository URL and the commit.
+    # git checkout is what carries the repository URL and the commit. Nothing
+    # else is pinned: a real directory inside some git work tree (the user's
+    # own plugin repository, or a ~/.config kept in a dotfiles repository) is
+    # not an install, and a pin would hand it to `haseen plugin update`.
+    registry_linked "$id" || continue
     target="$(readlink -f "$dir" 2>/dev/null || true)"
     [[ -n $target ]] || continue
     repo_root="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)"

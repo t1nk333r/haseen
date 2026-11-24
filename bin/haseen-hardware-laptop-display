@@ -15,7 +15,9 @@ usage() {
 Usage: haseen hardware laptop-display [on|off|toggle] [--dry-run]
 
 "off" disables the built-in panel (eDP/LVDS/DSI) while an external monitor is
-active, and keeps it off across reloads. "on" brings it back.
+active, and keeps it off across reloads while one is connected: a Hyprland
+start or reload with no external monitor brings the panel back. "on" brings
+it back.
 EOF
 }
 

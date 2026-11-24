@@ -31,11 +31,12 @@ const NAMES = {
     grok: "Grok"
 };
 // The menu's own glyphs for the three agents (default/menu.jsonc
-// setup.default.agent.*).
+// setup.default.agent.*). Five hex digits need the braced escape: a bare
+// four-digit one would read the fifth as a character of its own (plan 198).
 const GLYPHS = {
-    claude: "\uf06c4",
-    codex: "\uf06a9",
-    grok: "\uf06a9"
+    claude: "\u{F06C4}",
+    codex: "\u{F06A9}",
+    grok: "\u{F06A9}"
 };
 // An add row for each provider the CLI keeps accounts for, in its order, so
 // a first sign-in is one Enter whether or not anything is signed in.

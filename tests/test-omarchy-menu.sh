@@ -154,6 +154,13 @@ assert_status "a link of yours into Omarchy's directory is removed" 0 "$STATUS"
 assert_contains "it is unlinked" "$OUTPUT" "Unlinked omarchy-link."
 assert_eq "the link is gone, Omarchy's copy stays" "gone kept" \
     "$([[ -e $HP/omarchy-link || -L $HP/omarchy-link ]] || echo gone) $([[ -f $OMP/weather/manifest.json ]] && echo kept)"
+# A link whose target was moved or deleted is still something to unlink
+# (plan 187): haseen plugin uninstall used to refuse it as not installed.
+ln -s "$SANDBOX/moved-away" "$HP/me.gone"
+capture "$OMA/bin/omarchy-plugin-remove" me.gone --yes
+assert_status "a link whose target is gone is removed" 0 "$STATUS"
+assert_contains "it is unlinked" "$OUTPUT" "Unlinked me.gone."
+assert_eq "and the dangling link is gone" "gone" "$([[ -e $HP/me.gone || -L $HP/me.gone ]] || echo gone)"
 capture "$OMA/bin/omarchy-plugin-remove" me.notes --yes
 assert_status "a plain folder of yours is removed" 0 "$STATUS"
 assert_contains "and backed up" "$OUTPUT" "Backup at: $HP/.me.notes.bak."

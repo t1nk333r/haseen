@@ -14,11 +14,12 @@ import "../../Haseen/SecurityEvidence.js" as SecurityEvidence
 // when it is entered and bash guards (`when`, `checked`, `disabled`)
 // answered by one asynchronous batch per open.
 //
-// Omarchy's menu: a card centred over a dimmed screen (placement "overlay",
-// PanelPopup), no fade. haseen's mark leads the header, which reads "Go…"
-// or the submenu's title until you type; typing filters the current submenu
-// and everything under it, with a divider before the rows of deeper
-// submenus and each row's path under
+// Omarchy's menu: a card centred over the desktop (placement "overlay",
+// PanelPopup), no fade. Omarchy dims the screen behind it; haseen does not
+// (owner, 2026-10-25, plan 123; see the view section). haseen's mark leads
+// the header, which reads "Go…" or the submenu's title until you type;
+// typing filters the current submenu and everything under it, with a
+// divider before the rows of deeper submenus and each row's path under
 // it. Up/Down (PageUp/PageDown by six) move, Enter or Right opens or runs,
 // Left or Backspace on an empty query goes back, Backspace, Ctrl+Backspace
 // and Ctrl+U edit the query, Escape clears it and then closes. The first

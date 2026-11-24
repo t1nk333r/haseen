@@ -159,6 +159,18 @@ function withConnected(state, flag) {
   return next
 }
 
+// What a message means for the switch the panel asked for (`profile set
+// pending`; -1 when none is pending): "done" once wootingd confirms that slot,
+// "failed" when it refuses, "" while its answer is still to come. The panel
+// stays open until then: closed at once, it took its connection with it, and
+// a refused switch was never shown (plan 199).
+function switchOutcome(pending, message) {
+  if (pending < 0 || !message) return ""
+  if (message.ok === false) return "failed"
+  if (message.ok === true && message.active === pending) return "done"
+  return ""
+}
+
 // Losing the socket is not the same as losing the keyboard, but the widget
 // cannot tell the difference and must not keep showing a stale profile.
 function disconnected(state) {

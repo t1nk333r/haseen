@@ -189,7 +189,7 @@ vapt_repo() (
         have "$command" || { warn "VAPT prerequisite missing: $command"; return 2; }
     done
     case "$verb" in
-    enable) vapt_oniomarchy_enable_command ;;
+    enable) vapt_oniomarchy_enable_staged ;;
     disable) vapt_oniomarchy_disable_command ;;
     *) return 2 ;;
     esac

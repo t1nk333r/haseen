@@ -29,7 +29,9 @@ DOCKER_SOCKET="${HASEEN_DOCKER_SOCKET:-${OMARCHY_DOCKER_SOCKET:-/var/run/docker.
 case "${1:-}" in
 --configured)
     # An account in the docker group will not need sudo after the next login.
-    id -nG "${USER:-$(id -un)}" 2>/dev/null | grep -qw docker && exit 1
+    # The whole name: grep -w would take docker-users or ci-docker for it,
+    # since '-' is not a word character (plan 200).
+    id -nG "${USER:-$(id -un)}" 2>/dev/null | tr -s '[:space:]' '\n' | grep -qx docker && exit 1
     exit 0
     ;;
 "")

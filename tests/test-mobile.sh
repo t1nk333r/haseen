@@ -170,10 +170,17 @@ assert_contains "status: the other half is still ok" "$OUTPUT" "ok: iOS tooling"
 
 # A half-open firewall is degraded, not healthy.
 cp -a "$APPLIED" "$SANDBOX/halfopen"
-grep -v -- '-p udp --dport 1714:1764' "$APPLIED/etc/ufw/user.rules" >"$SANDBOX/halfopen/etc/ufw/user.rules"
+grep -v -- '-p udp -m multiport --dports 1714:1764' "$APPLIED/etc/ufw/user.rules" >"$SANDBOX/halfopen/etc/ufw/user.rules"
 mobile_layer "$SANDBOX/halfopen" status
 assert_status "status: missing udp rule is degraded" 2 "$STATUS"
 assert_contains "status: missing udp rule named" "$OUTPUT" "warn: ufw blocks 1714:1764/udp"
+
+# ufw writes a range as `-m multiport --dports` (the fixture above, as real ufw
+# writes it; plan 192); a single `--dport` rule written by hand counts too.
+cp -a "$APPLIED" "$SANDBOX/handrule"
+sed -i 's/-m multiport --dports/--dport/' "$SANDBOX/handrule/etc/ufw/user.rules"
+mobile_layer "$SANDBOX/handrule" status
+assert_contains "status: a hand-written --dport rule counts" "$OUTPUT" "ok: ufw allows 1714:1764/udp (KDE Connect)"
 
 # An installed 1.2.0 ifuse (from before this layer, or by hand) is called out.
 cp -a "$APPLIED" "$SANDBOX/has-ifuse"

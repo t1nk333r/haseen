@@ -286,7 +286,7 @@ Column {
                 notice: root.notice,
                 filter: root.filterText,
                 rows: root.rows.map(r => r.kind + ":" + (r.kind === "recent" ? r.id : r.kind === "snippet" ? r.index : "") + ":" + (r.preview || "")),
-                snippets: root.snippetConfig.snippets.map(s => s.text),
+                snippets: root.snippetConfig.snippets.map(s => s ? s.text : null),
                 lastCommand: root.lastCommand
             });
         }

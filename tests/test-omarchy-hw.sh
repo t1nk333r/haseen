@@ -12,6 +12,7 @@
 # haseen:covers share/haseen/omarchy/bin/omarchy-{git-url-check,hibernation-remove}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{hibernation-setup,hook,hook-install,menu-file}
 # haseen:covers share/haseen/omarchy/lib.sh bin/haseen-hw-match share/haseen/hardware/quirks.tsv
+# haseen:covers share/haseen/default/hypr/init.lua
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -334,6 +335,37 @@ capture "$OMA/omarchy-hw-recover-internal-monitor"
 [[ ! -e $TOGGLES/laptop-display-off.lua && ! -e $FLAGS/clamshell-display-off ]] && _pass ||
     _fail "recover-internal-monitor: alone, the panel comes back at the next start"
 
+# Hyprland's config runs the recovery before it loads the toggles, so a laptop
+# that boots undocked with the lid open does not start with its only display
+# off: the lid-open event that removes the toggle never came (plan 189). The
+# real init.lua runs under a stub hl that prints each hl.monitor rule.
+hl_stub="$SANDBOX/hl-monitor.lua"
+cat >"$hl_stub" <<'EOF'
+local function proxy(name)
+  return setmetatable({}, {
+    __index = function(_, k) return proxy(name .. "." .. k) end,
+    __call = function() return {} end,
+  })
+end
+hl = setmetatable({
+  dsp = proxy("dsp"),
+  monitor = function(rule) print("MONITOR " .. tostring(rule.output) .. " disabled=" .. tostring(rule.disabled)) end,
+}, { __index = function() return function() end end })
+EOF
+boot_config() { capture lua -e "dofile('$hl_stub')" "$HASEEN_PATH/default/hypr/init.lua"; }
+printf '%s\n' 'hl.monitor({ output = "eDP-1", disabled = true })' >"$TOGGLES/laptop-display-off.lua"
+echo connected >"$ROOT/sys/class/drm/card1-HDMI-A-1/status"
+boot_config
+assert_status "the config loads with the laptop-display toggle" 0 "$STATUS"
+assert_contains "docked, the config keeps the built-in panel off" "$OUTPUT" "MONITOR eDP-1 disabled=true"
+[[ -f $TOGGLES/laptop-display-off.lua ]] && _pass || _fail "docked, the config removed the laptop-display toggle"
+echo disconnected >"$ROOT/sys/class/drm/card1-HDMI-A-1/status"
+boot_config
+assert_status "the config loads undocked" 0 "$STATUS"
+assert_not_contains "undocked, the config leaves the built-in panel on" "$OUTPUT" "MONITOR eDP-1"
+[[ ! -e $TOGGLES/laptop-display-off.lua ]] && _pass ||
+    _fail "undocked, the config left the laptop-display toggle for the next reload"
+
 # --- Hyprland queries ---------------------------------------------------------------------
 box omarchy-hyprland-query
 both='[{"name":"eDP-1","focused":false,"disabled":false,"width":2880,"height":1800,"solitaryBlockedBy":["WINDOWED"]},
@@ -652,6 +684,40 @@ box omarchy-hibernation-remove
 capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run
 assert_contains "hibernation-remove: nothing set up" "$OUTPUT" "Hibernation is not set up"
 mkdir -p "$ROOT/etc/mkinitcpio.conf.d" "$ROOT/etc/limine-entry-tool.d" "$ROOT/etc/kernel" "$ROOT/swap" "$ROOT/proc"
+# Plain swap in the Arch wiki's btrfs layout, written by its owner: no resume
+# hook, no resume=, no setup comment. That is not hibernation, and Omarchy's
+# command leaves it alone too (plan 188).
+cat >"$ROOT/etc/fstab" <<'EOF'
+UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
+# my swap
+UUID=abcd /swap btrfs subvol=/@swap,rw,noatime 0 0
+/swap/swapfile none swap defaults 0 0
+EOF
+touch "$ROOT/swap/swapfile"
+printf 'Filename\tType\tSize\tUsed\tPriority\n/swap/swapfile\tfile\t33554428\t0\t-2\n' >"$ROOT/proc/swaps"
+capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run --yes
+assert_status "hibernation-remove: plain swap" 0 "$STATUS"
+assert_contains "hibernation-remove: plain swap is not hibernation" "$OUTPUT" "Hibernation is not set up"
+assert_not_contains "hibernation-remove: and stays on" "$OUTPUT" "swapoff"
+assert_not_contains "hibernation-remove: and its subvolume stays" "$OUTPUT" "btrfs subvolume delete"
+# The same swap with a resume hook (haseen hibernation setup reused the
+# owner's /swap mount, so it wrote no image-area comment): the swapfile goes,
+# but the mount line someone else wrote stays, and so does the subvolume it
+# mounts. Deleting it under a kept line would stop the next boot (plan 188).
+touch "$ROOT/etc/mkinitcpio.conf.d/haseen-resume.conf"
+capture env BOOTLOADER=limine "$OMA/omarchy-hibernation-remove" --dry-run --yes
+assert_status "hibernation-remove: an owner's mount line" 0 "$STATUS"
+assert_dry_pure "hibernation-remove: an owner's mount line" "$OUTPUT"
+assert_contains "hibernation-remove: the owner's swapfile goes" "$OUTPUT" "DRYRUN: sudo rm -f /swap/swapfile"
+assert_contains "hibernation-remove: fstab keeps the owner's mount line" "$OUTPUT" "DRYRUN: write /etc/fstab (mode 0644):
+    | UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
+    | # my swap
+    | UUID=abcd /swap btrfs subvol=/@swap,rw,noatime 0 0
+"
+assert_contains "hibernation-remove: and says why the subvolume stays" "$OUTPUT" "keeping that line and the subvolume it mounts"
+assert_not_contains "hibernation-remove: /swap stays mounted" "$OUTPUT" "umount /swap"
+assert_not_contains "hibernation-remove: the mounted subvolume is not deleted" "$OUTPUT" "btrfs subvolume delete"
+rm -f "$ROOT/etc/mkinitcpio.conf.d/haseen-resume.conf"
 cat >"$ROOT/etc/fstab" <<'EOF'
 UUID=abcd / btrfs subvol=/@,rw,noatime 0 0
 

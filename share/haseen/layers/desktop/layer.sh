@@ -231,10 +231,10 @@ greetd_config_ours() {
     [[ -r $f ]] && grep -qF "$DESKTOP_MARKER" "$f"
 }
 
-greetd_config_current() {
+greetd_config_current() { # [CHOICE]
     local f
     f="$(sysroot_path "$GREETD_CONFIG")"
-    [[ -r $f && "$(<"$f")" == "$(greetd_config)" ]]
+    [[ -r $f && "$(<"$f")" == "$(greetd_config "${1:-}")" ]]
 }
 
 # An enabled display manager (sddm, gdm, plasma-login, …) stays: uwsm's
@@ -252,14 +252,28 @@ desktop_login() {
         return 0
     fi
     pkg_install greetd greetd-tuigreet
-    if greetd_config_current; then
+    # The haseen greeter is pointed at only from a tree only root can change
+    # (greeter_trusted). Applied from a checkout, the config greetd has stays
+    # as it is (an installed greeter keeps its path); with none, tuigreet.
+    local choice why
+    choice="$(greeter_choice)"
+    if [[ $choice == haseen ]] && ! why="$(greeter_trusted)"; then
+        warn "login: not pointing greetd at this tree's greeter: $why"
+        if [[ -e $(sysroot_path "$GREETD_CONFIG") ]]; then
+            info "login: leaving $GREETD_CONFIG as it is (apply the desktop layer from the installed haseen)"
+            choice=""
+        else
+            choice=tuigreet
+        fi
+    fi
+    if [[ -n $choice ]] && greetd_config_current "$choice"; then
         info "login: $GREETD_CONFIG is current"
-    else
+    elif [[ -n $choice ]]; then
         if [[ -e $(sysroot_path "$GREETD_CONFIG") ]] && ! greetd_config_ours &&
             [[ ! -e $(sysroot_path "$GREETD_CONFIG.haseen-orig") ]]; then
             run_root cp -a "$GREETD_CONFIG" "$GREETD_CONFIG.haseen-orig"
         fi
-        greetd_config | write_root_file "$GREETD_CONFIG"
+        greetd_config "$choice" | write_root_file "$GREETD_CONFIG"
     fi
     # Enable only: starting greetd now would take the VT from under this run.
     [[ $dm == greetd.service ]] || run_root systemctl enable greetd.service

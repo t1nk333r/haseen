@@ -233,6 +233,21 @@ registry_link() {
     run ln -sfn "$src" "$PLUGIN_USER_DIR/$id"
 }
 
+# registry_linked ID [URL] — true when the plugin directory is a link into
+# the checkouts (into URL's own, when given): the only shape install, update
+# and restore make, and so the only one update may replace without asking. A
+# real directory is a plugin the user wrote, copied or cloned, and a link
+# elsewhere leads to their own checkout; neither is the registry's to move.
+# readlink -m: a link whose checkout is gone still counts as one of ours.
+registry_linked() {
+    local dir="$PLUGIN_USER_DIR/$1" into="$PLUGIN_REPOS_DIR" target
+    [[ -L $dir ]] || return 1
+    [[ -z ${2:-} ]] || into="$(repo_dir "$2")"
+    into="$(readlink -m -- "$into")"
+    target="$(readlink -m -- "$dir")"
+    [[ $target == "$into" || $target == "$into"/* ]]
+}
+
 # registry_split_tree URL — a repository browse URL that names a directory, as
 # copied from a forge's file view, split into "REPO<TAB>KIND<TAB>REST":
 #   GitHub           https://github.com/O/R/tree/REF/DIR
@@ -295,9 +310,17 @@ registry_resolve_tree() {
 registry_validate() {
     local id="$1"
     $DRY_RUN && return 0
-    if ! haseen-plugin-validate "$PLUGIN_USER_DIR/$id" >/dev/null 2>&1; then
-        haseen-plugin-validate "$PLUGIN_USER_DIR/$id" >&2 || true
+    if ! registry_check "$id"; then
         rm -rf "${PLUGIN_USER_DIR:?}/$id"
         return 1
     fi
+}
+
+# registry_check ID — validate without removing anything, saying why on
+# stderr: for a plugin that is already installed and keeps its link.
+registry_check() {
+    $DRY_RUN && return 0
+    haseen-plugin-validate "$PLUGIN_USER_DIR/$1" >/dev/null 2>&1 && return 0
+    haseen-plugin-validate "$PLUGIN_USER_DIR/$1" >&2 || true
+    return 1
 }

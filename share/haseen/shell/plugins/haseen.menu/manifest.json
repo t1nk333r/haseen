@@ -19,7 +19,7 @@
     "placement": {
       "type": "string",
       "default": "overlay",
-      "description": "Where the menu opens: overlay (Omarchy's: a card centred over the dimmed screen), center (a panel in the middle of the screen) or bar (a panel under the bar)"
+      "description": "Where the menu opens: overlay (Omarchy's: a card centred over the desktop, which a click outside it closes; no dim behind it), center (a panel in the middle of the screen) or bar (a panel under the bar)"
     },
     "debugIpc": {
       "type": "boolean",

@@ -168,11 +168,15 @@ fn main() {
         std::process::exit(2);
     }
     let (result, err) = generate(&os_args[f.first_arg], f.light, &f.mode);
-    if let Some(e) = err {
+    // A palette that could not be cached is still the palette: the error is
+    // a warning then, and only no palette at all fails the run. Go threw the
+    // palette away and exited 1 (plan 194).
+    if let Some(e) = &err {
         say(&format!("haseen-palette: {e}\n"));
-        std::process::exit(1);
     }
-    let result = result.expect("a palette when there is no error");
+    let Some(result) = result else {
+        std::process::exit(1);
+    };
     if f.json {
         emit(&format!("{}\n", result.json_line()));
         return;

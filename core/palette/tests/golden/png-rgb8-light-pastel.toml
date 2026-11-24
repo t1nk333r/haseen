@@ -5,7 +5,7 @@ mode = "light"
 accent = "#566892"
 cursor = "#25334c"
 selection = "#d1cdc6"
-selection_foreground = "#f6f1e9"
+selection_foreground = "#25334c"
 selection_background = "#d1cdc6"
 
 background = "#f6f1e9"

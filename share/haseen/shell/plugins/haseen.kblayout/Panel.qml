@@ -77,6 +77,8 @@ Column {
             height: Math.round(Theme.fontSize * 2.1)
 
             CursorSurface {
+                id: chrome
+
                 anchors.fill: parent
                 current: row.cursor
                 hasCursor: rowMouse.containsMouse
@@ -120,7 +122,10 @@ Column {
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 text: row.modelData.variant !== "" ? row.modelData.layout + " " + row.modelData.variant : row.modelData.layout
-                color: Theme.subtle(row.fill)
+                // Readable on the row as drawn: its chrome over the surface
+                // (plan 197; plan 121 had dropped the row's fill property
+                // this read, so it drew Qt's default black).
+                color: Theme.subtle(Theme.over(chrome.color, chrome.color.a, Theme.surface))
                 font.family: Theme.fontMono
                 font.pixelSize: Theme.font.bodySmall
             }

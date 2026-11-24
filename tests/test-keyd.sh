@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-setup-keyd share/haseen/default/keyd/** share/haseen/layers/base/lib.sh
 # haseen:covers share/haseen/lib/{packages,terminal}.sh
+# haseen:covers share/haseen/migrations/1795510882-keyd-capslock-layer.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -31,7 +32,10 @@ recorder() {
 # --- the shipped mapping -----------------------------------------------------
 shipped="$(grep -v '^#' "$SHIPPED")"
 assert_contains "tap is Escape, hold is the hyper layer" "$shipped" "capslock = overload(hyper, esc)"
-assert_contains "RightAlt+CapsLock is the real CapsLock" "$shipped" "rightalt+capslock = capslock"
+# In [main] a + left-hand side is a chord (both keys within keyd's 50 ms
+# chord_timeout); RightAlt held is keyd's altgr layer (plan 190).
+assert_contains "CapsLock pressed under RightAlt is the real CapsLock" "$shipped" $'[altgr]\ncapslock = capslock'
+assert_not_contains "no RightAlt + CapsLock chord" "$shipped" "rightalt+capslock"
 assert_contains "hyper is Ctrl+Meta+Alt+Shift" "$shipped" "[hyper:C-M-A-S]"
 
 # --- dry-run on an empty machine ----------------------------------------------
@@ -100,6 +104,46 @@ recorder
 capture haseen setup keyd off --yes
 assert_contains "off on a machine without keyd is a no-op" "$OUTPUT" "already off"
 assert_eq "and runs nothing privileged" "" "$(cat "$SANDBOX/sudo.log")"
+
+# --- the migration from the RightAlt + CapsLock chord (plan 190) ---------------
+mig="$HASEEN_PATH/migrations/1795510882-keyd-capslock-layer.sh"
+runmig() { env HASEEN_PATH="$HASEEN_PATH" bash -Eeuo pipefail -c 'source "$1"' bash "$mig"; }
+# The only file `haseen setup keyd on` wrote before plan 190 (90a8afd2).
+old_conf='# Written by `haseen setup keyd` (/etc/keyd/default.conf).
+# Hold CapsLock = hyper (Ctrl+Meta+Alt+Shift, i.e. SUPER + SHIFT + ALT + CTRL
+# in Hyprland binds); tap CapsLock = Escape; RightAlt+CapsLock = real CapsLock.
+[ids]
+*
+
+[main]
+capslock = overload(hyper, esc)
+rightalt+capslock = capslock
+
+[hyper:C-M-A-S]'
+root="$(sysroot mig-old)"
+mkdir -p "$root/etc/keyd"
+printf '%s\n' "$old_conf" >"$root/etc/keyd/default.conf"
+export HASEEN_SYSROOT="$root"
+recorder
+capture runmig
+assert_status "the migration succeeds on the old file" 0 "$STATUS"
+assert_contains "it replaces the file haseen wrote" "$(cat "$SANDBOX/sudo.log")" "tee /etc/keyd/default.conf"
+assert_contains "and says why" "$OUTPUT" "50 ms chord"
+capture env DRY_RUN=true HASEEN_PATH="$HASEEN_PATH" bash -Eeuo pipefail -c 'source "$1"' bash "$mig"
+assert_contains "its dry run shows the [altgr] line" "$OUTPUT" "    | [altgr]"
+for case in edited new missing; do
+    root="$(sysroot "mig-$case")"
+    mkdir -p "$root/etc/keyd"
+    case $case in
+    edited) printf '%s\n# mine\n' "$old_conf" >"$root/etc/keyd/default.conf" ;;
+    new) cp "$SHIPPED" "$root/etc/keyd/default.conf" ;;
+    esac
+    export HASEEN_SYSROOT="$root"
+    recorder
+    capture runmig
+    assert_status "the migration succeeds on a $case file" 0 "$STATUS"
+    assert_eq "and leaves a $case file alone" "" "$(cat "$SANDBOX/sudo.log")"
+done
 
 capture haseen setup keyd sideways
 assert_status "an unknown verb is a usage error" 2 "$STATUS"

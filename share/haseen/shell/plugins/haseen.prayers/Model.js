@@ -85,7 +85,7 @@ var UI_LABELS = {
   suggested: ["Suggested for", "المقترح لـ"],
   apply: ["Apply", "تطبيق"],
   dismiss: ["Dismiss", "تجاهل"],
-  approximate: ["High-latitude approximation: nearest valid latitude used", "تقريب للمناطق القطبية: استُخدم أقرب خط عرض صالح"],
+  approximate: ["High-latitude approximation: a nearer latitude or an estimated Asr used", "تقريب للمناطق القطبية: استُخدم خط عرض أقرب أو وقت عصر تقديري"],
   searchMethod: ["Search methods", "ابحث عن طريقة"],
   noMethod: ["No matching method", "لا توجد طريقة مطابقة"],
   display: ["Display", "العرض"],
@@ -143,6 +143,18 @@ function parseEnvelope(raw) {
 
 function text(value) {
   return value === undefined || value === null ? "" : String(value)
+}
+
+// A YYYY-MM-DD civil date as a local Date at noon, or null. Noon, never
+// midnight: where DST starts at 00:00 (Chile in September, Cuba in March)
+// Qt's V4 resolves the missing midnight onto the day before (haseen.calendar
+// Calendar.js, plan 103), and the Compact card's date line read Saturday
+// over Sunday's timetable (plan 197).
+function civilDateAtNoon(dateText) {
+  var parts = text(dateText).split("-")
+  if (parts.length < 3) return null
+  var stamp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12)
+  return isNaN(stamp.getTime()) ? null : stamp
 }
 
 function latinDigits(value) {
@@ -1005,6 +1017,7 @@ if (typeof module !== "undefined") {
     notificationEvents: notificationEvents,
     notificationText: notificationText,
     filePath: filePath,
+    civilDateAtNoon: civilDateAtNoon,
     bool: bool,
     number: number
   }

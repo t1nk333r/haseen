@@ -16,6 +16,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 # Google Lens serves its upload endpoint to browsers; a desktop Chrome string
 # is what the endpoint was verified with (2026-10-05) and what it answers 200 +
@@ -256,7 +258,7 @@ if [[ $MODE == text ]]; then
     kill_hard "$FREEZE_PID"
     FREEZE_PID=""
     if [[ -z ${text//[[:space:]]/} ]]; then
-        notify -u critical "No text found" "Select a region with text in it"
+        notify -u critical "$(i18n "No text found")" "$(i18n "Select a region with text in it")"
         exit 1
     fi
     printf '%s' "$text" | wl-copy
@@ -266,11 +268,11 @@ if [[ $MODE == text ]]; then
         # Synchronous, like the reference plugin's open_in_browser: a browser
         # that refuses to start is a failure the user should hear about.
         xdg-open "$url" >/dev/null 2>&1 || die "could not open a browser"
-        notify "Searching the selection" "$PROVIDER"
+        notify "$(i18n "Searching the selection")" "$PROVIDER"
     else
         # The recognised text is never put in a notification: it is the user's
         # screen content and a toast is a log everyone can read.
-        notify "Copied the text in the selection"
+        notify "$(i18n "Copied the text in the selection")"
     fi
     exit 0
 fi
@@ -294,7 +296,7 @@ if ! $UPLOAD; then
     wl-copy --type image/png --sensitive <"$CAPTURE"
     page="$(provider_page "$PROVIDER")"
     xdg-open "$page" >/dev/null 2>&1 || die "could not open a browser"
-    notify "Capture copied" "Paste it into $page"
+    notify "$(i18n "Capture copied")" "$(i18n "Paste it into %1" "$page")"
     exit 0
 fi
 
@@ -330,4 +332,4 @@ location="$(sed -n '/^[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]:/{s/^[^:]*:[[:space:]]*//
 [[ $location =~ ^https://(www|lens)\.google\.com/[^[:space:][:cntrl:]]*$ ]] ||
     die "Google Lens answered with an unexpected results URL; nothing was opened: ${location//[[:cntrl:]]/}"
 xdg-open "$location" >/dev/null 2>&1 || die "could not open a browser"
-notify "Searching the capture" "Google Lens"
+notify "$(i18n "Searching the capture")" "Google Lens"

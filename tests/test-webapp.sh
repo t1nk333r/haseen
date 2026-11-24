@@ -1,13 +1,16 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-agent-crash bin/haseen-setup-default bin/haseen-webapp-install
 # haseen:covers bin/haseen-webapp-remove tests/fixtures/webapp/**
+# haseen:covers share/haseen/omarchy/bin/omarchy-webapp-install
+# haseen:covers share/haseen/omarchy/bin/omarchy-agent bin/haseen-terminal-run
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Web apps and agent crash: `haseen webapp install` writes a launcher that runs
 # the default chromium-family browser in app mode with a fetched icon, refuses a
 # browser without an app mode, `haseen webapp remove` deletes launcher and icon,
-# and `haseen agent crash` builds its report without starting an agent.
+# and `haseen agent crash` builds its report and hands it to omarchy-agent,
+# which starts the agent in a terminal (stubs only).
 
 SYSROOT="$FIXTURES/webapp"
 PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -46,6 +49,39 @@ assert_eq "icon is a PNG" "image/png" "$(file -b --mime-type "$XDG_DATA_HOME/ico
 capture haseen webapp install Theme https://theme.example applications-graphics
 assert_status "icon-name install succeeds" 0 "$STATUS"
 assert_contains "named icon kept" "$(desktop_of Theme)" 'Icon=applications-graphics'
+
+# The last-resort favicon lookup sends Google the host only, never the path,
+# query, user info or port (plan 192). curl here logs each URL and serves only
+# Google's answer, as for a site behind a login.
+stub curl "out=\"\" url=\"\"
+while [ \$# -gt 0 ]; do
+    case \"\$1\" in -o) out=\"\$2\"; shift ;; -*) ;; *) url=\"\$1\" ;; esac
+    shift
+done
+echo \"\$url\" >>\"$SANDBOX/curl.log\"
+case \"\$url\" in https://www.google.com/s2/favicons*) ;; *) exit 22 ;; esac
+[ -n \"\$out\" ] && echo '$PNG_B64' | base64 -d > \"\$out\"
+exit 0"
+: >"$SANDBOX/curl.log"
+capture haseen webapp install Board 'https://me:pw@intranet.example.com:8443/board?team=x&token=abc'
+assert_status "the favicon fallback installs" 0 "$STATUS"
+assert_eq "Google gets the host alone" "https://www.google.com/s2/favicons?domain=intranet.example.com&sz=256" \
+    "$(grep google "$SANDBOX/curl.log")"
+assert_not_contains "and never the path or query" "$(grep google "$SANDBOX/curl.log")" "token"
+capture "$HASEEN_PATH/omarchy/bin/omarchy-webapp-install" Board2 'https://intranet.example.com/board?token=abc' "" board-cmd
+assert_status "Omarchy's installer: the favicon fallback installs" 0 "$STATUS"
+assert_eq "Omarchy's installer sends the host alone too" "https://www.google.com/s2/favicons?domain=intranet.example.com&sz=256" \
+    "$(grep google "$SANDBOX/curl.log" | tail -n1)"
+# A non-ASCII (IDN) host skips Google: it wants punycode, and percent-encoded
+# UTF-8 would only miss. Without the site's own icon the install says so.
+: >"$SANDBOX/curl.log"
+capture haseen webapp install Stadt 'https://münchen.example/rathaus'
+assert_status "an IDN host without a site icon fails" 1 "$STATUS"
+assert_contains "and asks for an icon" "$OUTPUT" "could not fetch an icon"
+assert_not_contains "Google is not asked for an IDN host" "$(cat "$SANDBOX/curl.log")" "google"
+capture "$HASEEN_PATH/omarchy/bin/omarchy-webapp-install" Stadt2 'https://münchen.example/rathaus' "" stadt-cmd
+assert_not_contains "nor by Omarchy's installer" "$(cat "$SANDBOX/curl.log")" "google"
+curl_stub
 
 # --- refusals ------------------------------------------------------------------
 capture haseen webapp install "bad/name" https://example.com icon
@@ -118,7 +154,20 @@ assert_contains "report has the binary" "$OUTPUT" "binary:   /usr/bin/nautilus"
 assert_contains "report has the signal" "$OUTPUT" "signal:   SIGSEGV"
 assert_contains "report has the crash time from coredumpctl" "$OUTPUT" "time:     Mon 2026-10-05 11:22:33 CEST"
 assert_contains "report points at the skill" "$OUTPUT" "diagnose-crash"
-assert_contains "dry-run plans the agent" "$OUTPUT" "DRYRUN: claude --prompt"
+# The report goes through omarchy-agent, which knows each agent's prompt
+# syntax, in a terminal window (plan 198): no agent takes --prompt.
+assert_contains "dry-run plans claude with the report after --" "$OUTPUT" "claude --permission-mode auto -- A process crashed on this machine"
+assert_contains "in a terminal window" "$OUTPUT" "DRYRUN: foot -e "
+assert_not_contains "never as --prompt" "$OUTPUT" "claude --prompt"
+stub codex 'echo "AGENT-RAN: $*"'
+capture env HASEEN_AGENT=codex haseen agent crash 1516893 nautilus /usr/bin/nautilus SIGSEGV --dry-run
+assert_contains "codex gets its own syntax" "$OUTPUT" "codex --approve-for-me -- A process crashed on this machine"
+# A click on the notification: the terminal runs the agent with the report.
+stub foot 'shift; "$@"'
+capture env HASEEN_AGENT=claude TERMINAL=foot haseen agent crash 1516893 nautilus /usr/bin/nautilus SIGSEGV
+assert_status "a real run starts the agent" 0 "$STATUS"
+assert_contains "the agent gets the report as its prompt" "$OUTPUT" "AGENT-RAN: --permission-mode auto -- A process crashed on this machine"
+assert_contains "naming the process" "$OUTPUT" "process:  nautilus"
 
 capture env HASEEN_AGENT=claude haseen agent crash not-a-pid --dry-run
 assert_status "a non-PID is refused" 1 "$STATUS"

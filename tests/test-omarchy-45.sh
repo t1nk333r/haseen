@@ -9,7 +9,7 @@
 # haseen:covers share/haseen/omarchy/bin/omarchy-{agent-usage-grok,agent-usage-kimi}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{apply-n1x-gpu-memory,ascii,boot-direct}
 # haseen:covers share/haseen/omarchy/bin/omarchy-branding-about-animation
-# haseen:covers share/haseen/omarchy/bin/omarchy-capture-screenrecording-process
+# haseen:covers share/haseen/omarchy/bin/omarchy-capture-screenrecording{,-process}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{chromium-add-feature,cmd-terminal-cwd,crash-mute}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{dev-notification-demo,font-cjk}
 # haseen:covers share/haseen/omarchy/bin/omarchy-{hw-dell-xps13-sidecar-amps,hw-elgato-camlink-4k}
@@ -50,7 +50,8 @@ unset OMARCHY_PATH OMARCHY_LANGUAGE_FILE
 # whose bin/ holds recorders of the haseen commands named in RECORDERS.
 RECORDERS=(haseen-install haseen-remove haseen-webapp-install haseen-webapp-remove haseen-system
     haseen-toggle-gaps haseen-toggle-bar haseen-toggle-workspace-layout haseen-toggle-fullscreen-desktop haseen-menu-select
-    haseen-notification-send haseen-update haseen-hw-match haseen-theme-current haseen-setup-ssh-agent)
+    haseen-notification-send haseen-update haseen-hw-match haseen-theme-current haseen-setup-ssh-agent
+    haseen-capture-screenrecord)
 box() {
     sandbox "$1"
     ROOT="$SANDBOX/root"
@@ -549,6 +550,10 @@ assert_contains "keyboard layouts are fcitx5's" "$OUTPUT" "DRYRUN: setsid -f fci
 rec fcitx5-remote
 "$OMA/omarchy-input-method" cycle back
 assert_eq "cycling switches fcitx5 between its two" "fcitx5-remote [-t]" "$(grep fcitx5-remote "$LOG")"
+: >"$LOG"
+capture "$OMA/omarchy-input-method" cycle --dry-run
+assert_eq "a dry cycle prints the switch (plan 200)" "DRYRUN: fcitx5-remote -t" "$OUTPUT"
+assert_eq "and does not switch" "" "$(calls)"
 capture "$OMA/omarchy-input-method" configure --seed
 assert_status "configure rewrites fcitx5 and is refused" 1 "$STATUS"
 assert_eq "no CJK forms chosen" "default" "$("$OMA/omarchy-font-cjk")"
@@ -610,6 +615,17 @@ assert_eq "the backend lives in haseen's state" "voxtype" "$(<"$HOME/.local/stat
 assert_eq "and is read back" "voxtype" "$("$OMA/omarchy-default-dictation")"
 "$OMA/omarchy-dictation" toggle
 assert_eq "dictation goes to Voxtype's adapter" "voxtype [record] [toggle]" "$(calls)"
+: >"$LOG"
+capture "$OMA/omarchy-dictation" toggle --dry-run
+assert_status "a dry toggle is not a usage error (plan 200)" 0 "$STATUS"
+assert_eq "it prints Voxtype's call" "DRYRUN: voxtype record toggle" "$OUTPUT"
+assert_eq "and starts nothing" "" "$(calls)"
+capture "$OMA/omarchy-dictation-voxtype" start --dry-run
+assert_eq "the adapter's dry run prints its call" "DRYRUN: voxtype record start" "$OUTPUT"
+assert_eq "and starts no recording" "" "$(calls)"
+capture fk omarchy-capture-screenrecording --fullscreen --dry-run
+assert_status "a dry recording is not refused" 0 "$STATUS"
+assert_eq "--dry-run passes on to haseen's recorder" "haseen-capture-screenrecord [--fullscreen] [--dry-run]" "$(calls)"
 capture "$OMA/omarchy-dictation" loud
 assert_status "an unknown action" 1 "$STATUS"
 capture "$OMA/omarchy-default-dictation" superwhisper
@@ -747,6 +763,9 @@ mkdir -p "$ROOT/run/systemd/system"
 capture fk omarchy-update-pacman -Syu --noconfirm --dry-run
 assert_dry_pure "update-pacman" "$OUTPUT"
 assert_eq "an upgrade runs as root in a PID 1 scope" "DRYRUN: sudo env HASEEN_UPDATE_PACMAN=1 systemd-run --scope --quiet --collect pacman -Syu --noconfirm" "$OUTPUT"
+capture env DRY_RUN=true HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-update-pacman" -Syu --noconfirm
+assert_dry_pure "update-pacman under DRY_RUN=true" "$OUTPUT"
+assert_eq "DRY_RUN=true from the environment is a dry run too" "DRYRUN: sudo env HASEEN_UPDATE_PACMAN=1 systemd-run --scope --quiet --collect pacman -Syu --noconfirm" "$OUTPUT"
 capture env LC_ALL=C HASEEN_PATH="$FAKE/share/haseen" "$OMA/omarchy-update-pacman" -Su --dry-run
 assert_contains "LC_ALL passes through" "$OUTPUT" "LC_ALL=C systemd-run"
 for args in "-S foo" "-Syu --overwrite *" "-Rns foo" ""; do

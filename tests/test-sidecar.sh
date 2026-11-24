@@ -39,8 +39,8 @@ VERSION="$(cat "$HASEEN_PATH/VERSION")"
 capture env HASEEN_VERSION="$VERSION" cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
 assert_status "cargo test --locked passes" 0 "$STATUS"
 assert_not_contains "no failed Rust test" "$OUTPUT" "FAILED"
-assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 57 passed; 0 failed"
-assert_contains "the protocol tests ran" "$OUTPUT" "test result: ok. 10 passed; 0 failed"
+assert_contains "the unit tests ran" "$OUTPUT" "test result: ok. 60 passed; 0 failed"
+assert_contains "the protocol tests ran" "$OUTPUT" "test result: ok. 11 passed; 0 failed"
 if cargo clippy --version >/dev/null 2>&1; then
     capture cargo clippy --locked --quiet --all-targets --manifest-path "$CRATE/Cargo.toml" -- -D warnings
     assert_status "clippy finds nothing" 0 "$STATUS"
@@ -156,6 +156,42 @@ make_root() {
         assert_eq "$1" "" "$(diff "$GOLDEN/$2.out" "$SANDBOX/$2" || true)"
         assert_not_contains "$1: nothing timed out" "$(cat "$SANDBOX/$2")" "TIMEOUT"
     }
+
+    # A reply that comes after both of a subscribe's events stays in the
+    # subscribe's group when the wait names it with "and" (plan 199): the
+    # border wipe's events come from another thread than its reply, and
+    # under load the reply landed in the next group, sorted after an event.
+    late_sock="$SANDBOX/late.sock"
+    printf '%s\n' '{"send": "{\"id\":1,\"method\":\"subscribe\"}"}' \
+        '{"wait": "event", "n": 2, "and": "reply"}' \
+        '{"send": "{\"id\":2,\"method\":\"status\"}"}' '{"wait": "reply"}' >"$SANDBOX/late.script"
+    python3 - "$late_sock" <<'EOF' &
+import socket, sys, time
+srv = socket.socket(socket.AF_UNIX)
+srv.bind(sys.argv[1])
+srv.listen(1)
+conn, _ = srv.accept()
+conn.sendall(b'{"type":"hello"}\n')
+for line in conn.makefile("rb"):
+    if b'"id":1,' in line:
+        conn.sendall(b'{"type":"event","n":"a"}\n{"type":"event","n":"a"}\n')
+        time.sleep(0.3)
+        conn.sendall(b'{"type":"reply","id":1}\n')
+    elif b'"id":2,' in line:
+        conn.sendall(b'{"type":"reply","id":2}\n{"type":"event","n":"b"}\n')
+    else:
+        conn.sendall(b'{"type":"reply","id":987654}\n')
+        break
+EOF
+    late_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -S $late_sock ]] && break
+        sleep 0.05
+    done
+    late_got="$(timeout 30 python3 "$REPO/tools/sidecar-play.py" "$late_sock" "$SANDBOX" "$SANDBOX/late.script" | paste -sd' ')"
+    wait "$late_pid" 2>/dev/null || true
+    assert_eq "a late reply stays with its subscribe's events" \
+        '{"type":"hello"} {"type":"event","n":"a"} {"type":"event","n":"a"} {"type":"reply","id":1} {"type":"reply","id":2} {"type":"event","n":"b"}' "$late_got"
 
     play protocol "$GOLDEN/protocol.script" rootless
     same "the protocol answers as the Go daemon's" protocol
@@ -316,6 +352,68 @@ else
     done
     assert_eq "shutdown ends the daemon" 1 "$(kill -0 "$daemon" 2>/dev/null && echo 0 || echo 1)"
     assert_eq "and takes its socket with it" "" "$(ls "$socket" 2>/dev/null || true)"
+    trap - EXIT
+fi
+
+# --- the CLI without socat (plan 199) ---------------------------------------------
+# No default layer installs socat. ss (iproute2, in Arch's base) tells a live
+# daemon from the socket file a SIGKILLed one leaves, and stop sends SIGTERM.
+if ! command -v ss >/dev/null; then
+    required ss "the CLI without socat is not exercised"
+else
+    nosocat="$SANDBOX/nosocat"
+    mkdir -p "$nosocat"
+    for tool in /usr/bin/*; do
+        [[ ${tool##*/} == socat ]] || ln -s "$tool" "$nosocat/${tool##*/}"
+    done
+    export XDG_RUNTIME_DIR="$SANDBOX/run-nosocat"
+    mkdir -p "$XDG_RUNTIME_DIR" "$SANDBOX/state-nosocat"
+    chmod 700 "$XDG_RUNTIME_DIR"
+    socket="$XDG_RUNTIME_DIR/haseen/sidecar.sock"
+    cli() { # [nosocat] ARGS... — haseen sidecar, without socat when asked
+        local path="$PATH"
+        [[ $1 != nosocat ]] || { path="$SANDBOX/stubs:$REPO/bin:$nosocat"; shift; }
+        capture env PATH="$path" HASEEN_PATH="$HASEEN_PATH" haseen sidecar "$@"
+    }
+    start_daemon() {
+        env -u HYPRLAND_INSTANCE_SIGNATURE "$binary" -idle-timeout 0 -state "$SANDBOX/state-nosocat" >/dev/null 2>&1 &
+        daemon=$!
+        for ((i = 0; i < 100; i++)); do
+            [[ -S $socket ]] && break
+            sleep 0.05
+        done
+    }
+    start_daemon
+    trap 'kill "$daemon" 2>/dev/null || true' EXIT
+    cli nosocat status
+    assert_contains "without socat, a live daemon is running" "$OUTPUT" "socket:       $socket (running)"
+    assert_contains "and the border wipe is unknown, not left out" "$OUTPUT" "border wipe:  unknown (asking the daemon needs socat and jq)"
+
+    kill -9 "$daemon"
+    wait "$daemon" 2>/dev/null || true
+    assert_eq "a SIGKILLed daemon leaves its socket file" yes "$([[ -S $socket ]] && echo yes)"
+    cli nosocat status
+    assert_contains "without socat, that socket is not running" "$OUTPUT" "socket:       $socket (not running)"
+    assert_not_contains "and has no border wipe to report" "$OUTPUT" "border wipe:"
+    if command -v socat >/dev/null; then
+        cli status
+        assert_contains "nor with socat" "$OUTPUT" "socket:       $socket (not running)"
+    fi
+    cli nosocat stop
+    assert_eq "stop on that socket: not running" "0|[*] not running" "$STATUS|$OUTPUT"
+
+    start_daemon
+    cli nosocat stop --dry-run
+    assert_eq "stop --dry-run without socat asks nothing" "0|DRYRUN: ask the daemon on $socket to shut down" "$STATUS|$OUTPUT"
+    assert_eq "and the daemon still runs" 0 "$(kill -0 "$daemon" 2>/dev/null && echo 0 || echo 1)"
+    cli nosocat stop
+    assert_eq "stop without socat works" "0|[*] asked the daemon to exit" "$STATUS|$OUTPUT"
+    for ((i = 0; i < 50; i++)); do
+        kill -0 "$daemon" 2>/dev/null || break
+        sleep 0.1
+    done
+    assert_eq "the daemon exits" 1 "$(kill -0 "$daemon" 2>/dev/null && echo 0 || echo 1)"
+    assert_eq "and takes its socket with it" no "$([[ -e $socket ]] && echo yes || echo no)"
     trap - EXIT
 fi
 

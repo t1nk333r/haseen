@@ -418,9 +418,15 @@ vapt_pacman_apply_transaction() {
     vapt_sealed_safe "$(vapt_read_path "$VAPT_CACHE/sealed")" || return $?
     # -U installs a new package as explicit and keeps an upgraded package's
     # install reason, the target's included. What it newly installs besides
-    # the target is a dependency, as `pacman -S` would record it.
+    # the target is a dependency, as `pacman -S` would record it, unless this
+    # run selected it too: its own row then finds it exact and never marks it
+    # again, so it stays explicit like the target (plan 195).
+    local -A roots=()
+    for name in "${!VAPT_TARGET[@]}"; do
+        [[ ${VAPT_SOURCE[$name]:-} == native || ${VAPT_TARGET[$name]} != */* ]] || roots[${VAPT_TARGET[$name]##*/}]=1
+    done
     while IFS= read -r name; do
-        [[ -z $name || $name == "${target##*/}" ]] || deps+=("$name"$'\t'"$target")
+        [[ -z $name || $name == "${target##*/}" || -n ${roots[$name]:-} ]] || deps+=("$name"$'\t'"$target")
     done <<<"$absent"
     if ((${#deps[@]})); then
         vapt_state_path_safe "$HASEEN_STATE_DIR/vapt/reasons-pending" &&

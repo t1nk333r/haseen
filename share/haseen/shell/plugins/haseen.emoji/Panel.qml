@@ -24,7 +24,9 @@ Column {
     property var emojis: []
     property string query: ""
     property string lastCopied: ""
-    readonly property var results: EmojiSearch.filterEmojis(emojis, query, 1000)
+    // Every match: the grid builds its tiles lazily, and a cap left the last
+    // 870 (late symbols, the flags) reachable only by a search (plan 197).
+    readonly property var results: EmojiSearch.filterEmojis(emojis, query, emojis.length)
 
     function accept(index: int): void {
         const item = results[index];

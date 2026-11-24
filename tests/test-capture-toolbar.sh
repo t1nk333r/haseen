@@ -297,7 +297,7 @@ capture haseen capture audiorecord --format ogg
 assert_status "sound start" 0 "$STATUS"
 assert_contains "it reports the file" "$OUTPUT" "Recording to $HOME/MUSIC/audiorecording-"
 assert_eq "the flag holds the start in epoch seconds" yes "$([[ -e $FLAG && $(head -n1 "$FLAG") =~ ^[0-9]+$ ]] && echo yes)"
-sup="$(cat "$XDG_RUNTIME_DIR/haseen-audiorecord/pid" 2>/dev/null)"
+sup="$(head -n1 "$XDG_RUNTIME_DIR/haseen-audiorecord/pid" 2>/dev/null)"
 assert_eq "the supervisor runs" yes "$(kill -0 "$sup" 2>/dev/null && echo yes)"
 assert_contains "ffmpeg got the microphone" "$(<"$CALLS")" "ffmpeg -hide_banner -loglevel error -nostdin -f pulse -i @DEFAULT_SOURCE@ -c:a libvorbis"
 capture haseen capture audiorecord
@@ -311,14 +311,29 @@ capture haseen capture audiorecord --stop
 assert_status "--stop with nothing running" 1 "$STATUS"
 # A killed supervisor leaves the flag; the next run clears it.
 haseen capture audiorecord >/dev/null 2>&1
-sup="$(cat "$XDG_RUNTIME_DIR/haseen-audiorecord/pid" 2>/dev/null)"
-rec="$(cat "$XDG_RUNTIME_DIR/haseen-audiorecord/ffmpeg.pid" 2>/dev/null)"
+sup="$(head -n1 "$XDG_RUNTIME_DIR/haseen-audiorecord/pid" 2>/dev/null)"
+rec="$(head -n1 "$XDG_RUNTIME_DIR/haseen-audiorecord/ffmpeg.pid" 2>/dev/null)"
 kill -9 "$sup" "$rec" 2>/dev/null
 sleep 0.2
 assert_eq "the flag outlives a killed supervisor" yes "$([[ -e $FLAG ]] && echo yes)"
 capture haseen capture audiorecord --stop
 assert_contains "the stale flag is cleared" "$OUTPUT" "Cleared a stale recording flag"
 assert_eq "and gone" no "$([[ -e $FLAG ]] && echo yes || echo no)"
+# Its PID since went to another process: a toggle starts afresh instead of
+# sending that process SIGTERM (plan 199), from the file this version writes
+# (PID, start time) and from an older one-line file.
+sleep 30 &
+other=$!
+for pidfile in "$(printf '%s\n%s' "$other" 1)" "$other"; do
+    mkdir -p "$XDG_RUNTIME_DIR/haseen-audiorecord"
+    printf '%s\n' "$pidfile" >"$XDG_RUNTIME_DIR/haseen-audiorecord/pid"
+    date +%s >"$FLAG"
+    capture haseen capture audiorecord --stop
+    assert_eq "a reused supervisor PID is stale ($(wc -l <<<"$pidfile")-line file)" "1|Cleared a stale recording flag" "$STATUS|$(head -n1 <<<"$OUTPUT")"
+    assert_eq "and its new owner is left alone" yes "$(kill -0 "$other" 2>/dev/null && echo yes)"
+done
+kill "$other" 2>/dev/null || true
+wait "$other" 2>/dev/null || true
 
 # --- the toolbar and its service in the real engine --------------------------------
 if [[ ! -x $QS_BIN ]] || ! command -v dbus-run-session >/dev/null; then

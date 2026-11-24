@@ -113,6 +113,9 @@ Item {
             }
 
             MouseArea {
+                // Wheel delta not yet worth a step.
+                property real wheelDelta: 0
+
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 preventStealing: true
@@ -126,7 +129,17 @@ Item {
                     if (pressed)
                         row.setVolume(fraction(event.x));
                 }
-                onWheel: event => row.setVolume(row.volume + (event.angleDelta.y > 0 ? 0.05 : -0.05))
+                // 5 % a notch. Touchpads and hi-res wheels send fractions of
+                // one, which add up; a sideways or zero delta moves nothing
+                // (BarButton's rule, plan 091; plan 197).
+                onWheel: event => {
+                    wheelDelta += event.angleDelta.y;
+                    const steps = Math.trunc(wheelDelta / 120);
+                    if (steps === 0)
+                        return;
+                    wheelDelta -= steps * 120;
+                    row.setVolume(row.volume + steps * 0.05);
+                }
             }
         }
     }

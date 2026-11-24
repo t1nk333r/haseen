@@ -101,7 +101,7 @@ Singleton {
                 Plugins.reportError(id, "dms: startup check: " + err.title);
                 // As qs.Services ToastService does; not imported here, since
                 // every qs.Compat user would then need the DMS modules.
-                Quickshell.execDetached(["notify-send", "--app-name=haseen", "--urgency=critical", name + " Startup Failed", err.details !== "" ? err.title + "\n\n" + err.details : err.title]);
+                Quickshell.execDetached(["notify-send", "--app-name=haseen", "--urgency=critical", "--", name + " Startup Failed", err.details !== "" ? err.title + "\n\n" + err.details : err.title]);
             }
             for (const waiter of entry.waiters)
                 waiter(err === null);
