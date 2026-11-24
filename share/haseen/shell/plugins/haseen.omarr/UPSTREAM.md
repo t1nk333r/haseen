@@ -42,7 +42,17 @@ unmodified with their `NOTICE` and `LICENSE-APACHE`.
   notification server, its history and Do Not Disturb) instead of
   `omarchy-notification-send`, with the service's bundled icon; a click
   toggles the panel. Each sender waits for its click, so it runs detached
-  instead of in upstream's one-at-a-time queue.
+  instead of in upstream's one-at-a-time queue. Events are seeded per list:
+  each history, recent or pending list seeds its own rows the first time it
+  answers for a service at its URL (plan 193), so a service
+  added or pointed elsewhere mid-session notifies what happens next, not one
+  notification per row it already had.
+- **qBittorrent login.** qBittorrent refuses a wrong password with 200
+  "Fails.". The row shows "Login failed", and the same URL and credentials
+  are not sent again for an hour (`QBIT_LOGIN_RETRY_MS`), since logging in
+  again on every poll walks qBittorrent into banning the address (five
+  failures, an hour, by default); new credentials or a new URL go out at
+  once (plan 193).
 - **The download card.** Upstream drew its own always-on-top window
   (`DownloadToast.qml`). Here it is one notification, kept by a sender that
   waits on it: `-t 0` keeps it up, `-p` prints its id, and changes replace it

@@ -53,6 +53,14 @@ Scope {
     property var snapshots: []
     property var nowFeed: ({ downloads: [], calendar: [], warnings: [], sessions: [], onDeck: [], recent: [], downloadingCount: 0, downCount: 0 })
     property var qbitReady: ({})
+    // qBittorrent logins it refused, by service id: {key, at} (Model.qbitLoginHeld).
+    // The same credentials are not sent again while one holds.
+    property var qbitLoginFailed: ({})
+    // The event lists (history, recent, pending) that have answered, by
+    // service id, with the URL they answered from: a list's first answer for
+    // a service added or pointed elsewhere mid-session seeds its rows
+    // instead of notifying each one (commitSnapshot's seedEvents).
+    property var listsAnswered: ({})
     // Seerr: the titles and posters looked up, by Model.seerrTitleKey (empty
     // for a lookup that answered an error), the lookups on their way, and
     // each request list waiting for its titles, by "<service id>:<list>:<page>".
@@ -287,6 +295,12 @@ Scope {
 
     function removeService(id) {
         persistSettings(Model.removeService(root.pluginSettings, id));
+        const answered = root.copyMap(root.listsAnswered);
+        delete answered[String(id)];
+        root.listsAnswered = answered;
+        const failed = root.copyMap(root.qbitLoginFailed);
+        delete failed[String(id)];
+        root.qbitLoginFailed = failed;
         if (!root.credentialsWritable()) {
             Qt.callLater(root.rebuildSnapshots);
             return;
@@ -540,6 +554,25 @@ Scope {
         root.pump();
     }
 
+    // True the first time an event list answers for this service at its
+    // current URL; the caller passes it to commitSnapshot as seedEvents.
+    function firstAnswer(service, list) {
+        const id = String(service.id);
+        const known = root.listsAnswered[id];
+        const lists = known && known.url === String(service.url) ? known.lists : {};
+        if (lists[list] === true)
+            return false;
+        const marked = root.copyMap(lists);
+        marked[list] = true;
+        const next = root.copyMap(root.listsAnswered);
+        next[id] = {
+            url: String(service.url),
+            lists: marked
+        };
+        root.listsAnswered = next;
+        return true;
+    }
+
     function commitSnapshot(next, service, seedEvents) {
         const prev = root.snapshotMap[next.id] || Model.emptySnapshot(service);
         const events = Model.eventsFromPoll(prev, next, service);
@@ -763,7 +796,7 @@ Scope {
         if (req.kind === "arr-history") {
             if (parsed.status >= 200 && parsed.status < 400) {
                 snap.activity = Model.parseArrHistory(parsed.body, service.kind);
-                root.commitSnapshot(snap, service);
+                root.commitSnapshot(snap, service, root.firstAnswer(service, "activity"));
             }
             return;
         }
@@ -792,7 +825,7 @@ Scope {
         if (req.kind === "sab-history") {
             if (parsed.status >= 200 && parsed.status < 400) {
                 snap.activity = Model.parseSabHistory(parsed.body);
-                root.commitSnapshot(snap, service);
+                root.commitSnapshot(snap, service, root.firstAnswer(service, "activity"));
             }
             return;
         }
@@ -800,12 +833,23 @@ Scope {
             const ready = {};
             for (const rk in root.qbitReady)
                 ready[rk] = root.qbitReady[rk];
-            ready[service.id] = parsed.status >= 200 && parsed.status < 400 && String(parsed.body).indexOf("Fails") === -1;
+            ready[service.id] = Model.qbitLoginOk(parsed.status, parsed.body);
             root.qbitReady = ready;
-            if (ready[service.id])
+            const failed = root.copyMap(root.qbitLoginFailed);
+            if (ready[service.id]) {
+                delete failed[service.id];
+                root.qbitLoginFailed = failed;
                 root.enqueueQbit(service, true);
-            else
-                root.commitHealth(service, snap, parsed.status || 401);
+                return;
+            }
+            // Refused (a wrong password answers 200 "Fails."): down, and
+            // the same credentials wait (Model.QBIT_LOGIN_RETRY_MS).
+            failed[service.id] = {
+                key: req.loginKey,
+                at: Date.now()
+            };
+            root.qbitLoginFailed = failed;
+            root.commitLoginFailure(service, snap);
             return;
         }
         if (req.kind === "qbit-torrents") {
@@ -930,7 +974,7 @@ Scope {
         if (req.kind === "jellyfin-recent") {
             if (parsed.status >= 200 && parsed.status < 400) {
                 snap.recent = Model.parseJellyfinLibrary(parsed.body, root.pageSize);
-                root.commitSnapshot(snap, service);
+                root.commitSnapshot(snap, service, root.firstAnswer(service, "recent"));
                 if (root.panelOpen)
                     root.enqueueJellyfinArt(service, snap);
             }
@@ -1151,7 +1195,9 @@ Scope {
             root.setDetailQueue(service.id, batch.page, items, batch.total);
         } else {
             let snap = Model.applyServiceMeta(root.cloneSnap(root.snapshotFor(service)), service);
+            let seed = false;
             if (batch.list === "pending") {
+                seed = root.firstAnswer(service, "pending");
                 snap.pending = items;
                 snap.pendingTotal = batch.total;
             } else {
@@ -1160,7 +1206,7 @@ Scope {
                 snap.queueTotal = batch.total;
                 snap.queuePage = 1;
             }
-            root.commitSnapshot(snap, service);
+            root.commitSnapshot(snap, service, seed);
         }
         if (root.panelOpen)
             root.enqueueSeerrPosters(service, items);
@@ -1309,7 +1355,28 @@ Scope {
         });
     }
 
+    // What a login would send, hashed: a refused one is not sent again
+    // until the URL or the credentials change.
+    function qbitLoginKey(service) {
+        const auth = root.cred(service.id);
+        return Qt.md5([service.url, auth.username || "admin", auth.password || ""].join("\n"));
+    }
+
+    function qbitLoginHeld(service) {
+        return Model.qbitLoginHeld(root.qbitLoginFailed[service.id], root.qbitLoginKey(service), Date.now());
+    }
+
+    function commitLoginFailure(service, snap) {
+        const decision = Model.decideHealth(root.snapshotFor(service).health, 401, root.healthMisses[service.id] || 0);
+        root.setHealthMisses(service.id, decision.misses);
+        root.commitSnapshot(Model.applyLoginFailure(snap), service);
+    }
+
     function enqueueQbitLogin(service) {
+        if (root.qbitLoginHeld(service)) {
+            root.commitLoginFailure(service, Model.applyServiceMeta(root.cloneSnap(root.snapshotFor(service)), service));
+            return;
+        }
         const auth = root.cred(service.id);
         root.enqueue({
             kind: "qbit-login",
@@ -1317,12 +1384,17 @@ Scope {
             url: Model.qbitLoginUrl(service.url),
             method: "POST",
             bodyText: Model.qbitLoginBody(auth.username || "admin", auth.password),
-            cookieWrite: root.cookiePath(service.id)
+            cookieWrite: root.cookiePath(service.id),
+            loginKey: root.qbitLoginKey(service)
         });
     }
 
     function enqueueQbit(service, skipLogin) {
         const ready = root.qbitReady[service.id] === true;
+        // A refused login holds: nothing goes out, so the polls never walk
+        // qBittorrent into banning this address. The row stays "Login failed".
+        if (!ready && !skipLogin && root.qbitLoginHeld(service))
+            return;
         const auth = root.cred(service.id);
         if (!skipLogin && !ready && (auth.username || auth.password)) {
             root.enqueueQbitLogin(service);

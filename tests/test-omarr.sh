@@ -602,4 +602,135 @@ EOF
         assert_eq "engine: readable again, polling resumes" "true" "$(r .restored.ready)"
     fi
     assert_not_contains "engine: the repaired key never reached an argv" "$(cat "$LOG")" "$FIXTURE"
+
+    # A refused qBittorrent login and a service added mid-session (plan 193).
+    # qBittorrent answers a wrong password with 200 "Fails.": the row is
+    # down ("Login failed") and the same credentials are not sent again,
+    # even with the panel's 2 s downloader poll running; new ones go out at
+    # once. A Sonarr added later seeds the history it finds instead of
+    # notifying every row, and a grab after that is notified.
+    LOG3="$SANDBOX/curl-login.log"
+    : >"$LOG3"
+    jq -n '{records: [range(1; 4) | {id: (9000 + .), eventType: "grabbed", series: {title: ("Old Show " + tostring)}}]}' >"$FIX/history-3.json"
+    jq '.records = [{id: 9004, eventType: "grabbed", series: {title: "New Show"}}] + .records' "$FIX/history-3.json" >"$FIX/history-4.json"
+    command cp -f "$FIX/history-3.json" "$FIX/history.json"
+    export CURL_LOG3="$LOG3"
+    stub curl 'url="" body="" jar=""
+prev=""
+for a in "$@"; do
+    case "$prev" in --data-binary) body="${a#@}" ;; -c) jar="$a" ;; esac
+    prev="$a"
+    url="$a"
+done
+printf "%s\n" "$*" >>"$CURL_LOG3"
+case "$url" in
+*/api/v2/auth/login)
+    printf "login %s\n" "$(cat "$body")" >>"$CURL_LOG3"
+    if grep -q "password=right" "$body"; then [ -n "$jar" ] && printf "jar\n" >"$jar"; printf "Ok.\n200"; else printf "Fails.\n200"; fi ;;
+*/api/v2/torrents/info*) case " $* " in *" -b "*) printf "[]\n200" ;; *) printf "Forbidden\n403" ;; esac ;;
+*/api/v2/transfer/info) printf "{\"dl_info_speed\":0,\"up_info_speed\":0}\n200" ;;
+*/api/v3/system/status) cat "$CURL_FIX/status.json"; printf "\n200" ;;
+*/api/v3/queue*) printf "{\"records\":[],\"totalRecords\":0}\n200" ;;
+*/api/v3/calendar*) printf "[]\n200" ;;
+*/api/v3/history*) cat "$CURL_FIX/history.json"; printf "\n200" ;;
+*) printf "\n404" ;;
+esac'
+    printf '{"svc-1":{"username":"admin","password":"wrong"}}\n' >"$legacy/credentials.json"
+    chmod 600 "$legacy/credentials.json"
+    jq -n '{plugins: {"haseen.omarr": {settings: {debugIpc: true, pollSeconds: 60, services: [
+        {id: "svc-1", kind: "qbittorrent", name: "qBittorrent", url: "http://127.0.0.1:8081"}]}}}}' >"$XDG_CONFIG_HOME/haseen/shell.json"
+    harness3="$SANDBOX/shell-login"
+    mkdir -p "$harness3"
+    for module in Haseen Compat Ui Commons plugins; do
+        ln -s "$harness/$module" "$harness3/$module"
+    done
+    cat >"$harness3/shell.qml" <<EOF
+import QtQuick
+import Quickshell
+import qs.Haseen
+
+ShellRoot {
+    id: probe
+
+    property var svc: null
+    property int step: 0
+    property int ticks: 0
+    property int held: 0
+    property var seen: ({})
+
+    function snap(kind: string): var {
+        return probe.svc.snapshots.find(x => x.kind === kind) || ({});
+    }
+
+    function idle(): bool {
+        return probe.svc.reqQueue.length === 0 && probe.svc.currentReq === null;
+    }
+
+    function grabs(): var {
+        return probe.svc.sentNotes.map(c => c.join(" ")).filter(c => c.indexOf("Sonarr grabbed") !== -1);
+    }
+
+    // haseen:ui-timeout
+    Timer {
+        interval: 100
+        repeat: true
+        running: true
+        onTriggered: {
+            if (++probe.ticks > 450) {
+                console.log("RESULT " + JSON.stringify({ error: "timeout at step " + probe.step, seen: probe.seen }));
+                Qt.quit();
+                return;
+            }
+            if (!probe.svc) {
+                if (!Plugins.registry["haseen.omarr"])
+                    return;
+                const c = Qt.createComponent("file://$P/Service.qml");
+                probe.svc = c.createObject(probe, { pluginId: "haseen.omarr", settings: Qt.binding(() => Plugins.settingsFor("haseen.omarr")) });
+                return;
+            }
+            const s = probe.svc;
+            if (probe.step === 0 && s.ready && probe.snap("qbittorrent").health !== undefined
+                && probe.snap("qbittorrent").health !== "unknown" && probe.idle()) {
+                probe.seen.refused = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText };
+                // The open panel polls the downloaders every 2 s.
+                s.panelOpen = true;
+                probe.step = 1;
+            } else if (probe.step === 1) {
+                if (++probe.held < 50)
+                    return;
+                probe.seen.held = { health: probe.snap("qbittorrent").health, status: probe.snap("qbittorrent").statusText };
+                s.updateService("svc-1", {}, { username: "admin", password: "right" });
+                probe.step = 2;
+            } else if (probe.step === 2 && probe.snap("qbittorrent").health === "up") {
+                probe.seen.fixed = { status: probe.snap("qbittorrent").statusText };
+                s.addService({ kind: "sonarr", name: "Sonarr", url: "http://127.0.0.1:8989" }, { apiKey: "$FIXTURE" });
+                probe.step = 3;
+            } else if (probe.step === 3 && (probe.snap("sonarr").activity || []).length === 3 && probe.idle()) {
+                probe.seen.added = { grabs: probe.grabs().length };
+                Quickshell.execDetached(["cp", "-f", "$FIX/history-4.json", "$FIX/history.json"]);
+                probe.step = 4;
+            } else if (probe.step === 4 && (probe.snap("sonarr").activity || []).length === 4 && probe.idle()) {
+                probe.seen.later = { grabs: probe.grabs() };
+                console.log("RESULT " + JSON.stringify(probe.seen));
+                Qt.quit();
+            }
+        }
+    }
+}
+EOF
+    capture env QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME='' QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
+        timeout 90 dbus-run-session --config-file="$REPO/tools/smoke-session.conf" -- "$QS_BIN" -p "$harness3"
+    result="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | tail -n1)"
+    [[ -n $result ]] || _fail "omarr login engine produced no result" "$OUTPUT"
+    assert_eq "engine: no error with a refused login" "null" "$(r .error)"
+    assert_eq "engine: qBittorrent's 200 \"Fails.\" is a failed login, not a reachable service" "down|Login failed" "$(r '[.refused.health, .refused.status] | join("|")')"
+    assert_eq "engine: it stays failed while the panel polls" "down|Login failed" "$(r '[.held.health, .held.status] | join("|")')"
+    assert_eq "engine: the refused credentials were sent once, never again" "1" "$(grep -c '^login username=admin&password=wrong$' "$LOG3")"
+    assert_eq "engine: nothing else went to qBittorrent while they held" "" \
+        "$(sed -n '/password=right/q;p' "$LOG3" | grep ':8081/' | grep -v ':8081/api/v2/auth/login' || true)"
+    assert_eq "engine: new credentials go out at once and log in" "1|Idle" "$(grep -c '^login username=admin&password=right$' "$LOG3")|$(r .fixed.status)"
+    assert_eq "engine: a Sonarr added mid-session notifies none of the history it finds" "0" "$(r .added.grabs)"
+    assert_eq "engine: and notifies the grab that follows, once" "1" "$(r '.later.grabs | length')"
+    assert_contains "engine: naming it" "$(r '.later.grabs[0]')" "Sonarr grabbed New Show"
+    assert_eq "engine: no QML warnings with a refused login" "" "$(grep -E 'ReferenceError|TypeError|is not defined|Cannot read property|Unable to assign|Binding loop|Cannot anchor|Cannot open|haseen.omarr/.*(error|warning)' <<<"$OUTPUT" || true)"
 fi

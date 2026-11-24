@@ -46,6 +46,11 @@ var IMAGE_MAX_BYTES = 8 * 1024 * 1024
 var SEEN_LIMIT = 400
 var DEFAULT_POLL_SECONDS = 30
 var DOWNLOAD_POLL_MS = 2000
+// How long a qBittorrent login it refused holds before the same credentials
+// are sent again: qBittorrent bans the address after 5 failures by default
+// (for an hour), and the counter only resets on a good login, so polling
+// must not retry them every tick (plan 193).
+var QBIT_LOGIN_RETRY_MS = 3600000
 var LIST_PAGE_SIZE = 20
 var PAGE_SIZE_MIN = 5
 var PAGE_SIZE_MAX = 50
@@ -1073,6 +1078,29 @@ function sabBody(apiKey, mode, extra, pageSize) {
 
 function qbitLoginBody(username, password) {
   return formEncode({ username: String(username || ""), password: String(password || "") })
+}
+
+// Whether qBittorrent took a login. A wrong password still answers 200,
+// with the body "Fails." instead of "Ok.".
+function qbitLoginOk(statusCode, body) {
+  var code = parseInt(statusCode, 10) || 0
+  return code >= 200 && code < 400 && String(body === undefined || body === null ? "" : body).indexOf("Fails") === -1
+}
+
+// A refused login ({key, at}, key naming the URL and credentials it used)
+// holds while the same key is current and QBIT_LOGIN_RETRY_MS has not passed.
+function qbitLoginHeld(failed, key, nowMs) {
+  if (!failed || typeof failed !== "object" || String(failed.key || "") === "") return false
+  if (String(failed.key) !== String(key)) return false
+  var age = (Number(nowMs) || 0) - (Number(failed.at) || 0)
+  return age >= 0 && age < QBIT_LOGIN_RETRY_MS
+}
+
+// A service whose login was refused is down, whatever the HTTP code was.
+function applyLoginFailure(snapshot) {
+  var copy = applyHttpHealth(snapshot, 401)
+  copy.statusText = N_("Login failed")
+  return copy
 }
 
 function qbitHashesBody(hashes) {
@@ -2858,6 +2886,7 @@ if (typeof module !== "undefined" && module.exports) {
     PAGE_SIZE_MIN: PAGE_SIZE_MIN,
     PAGE_SIZE_MAX: PAGE_SIZE_MAX,
     DOWNLOAD_POLL_MS: DOWNLOAD_POLL_MS,
+    QBIT_LOGIN_RETRY_MS: QBIT_LOGIN_RETRY_MS,
     KINDS: KINDS,
     KIND_DEFAULTS: KIND_DEFAULTS,
     curlBounds: curlBounds,
@@ -2938,6 +2967,9 @@ if (typeof module !== "undefined" && module.exports) {
     headerApiKey: headerApiKey,
     sabBody: sabBody,
     qbitLoginBody: qbitLoginBody,
+    qbitLoginOk: qbitLoginOk,
+    qbitLoginHeld: qbitLoginHeld,
+    applyLoginFailure: applyLoginFailure,
     qbitHashesBody: qbitHashesBody,
     sabApiUrl: sabApiUrl,
     qbitLoginUrl: qbitLoginUrl,

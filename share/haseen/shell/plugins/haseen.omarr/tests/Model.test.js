@@ -486,6 +486,23 @@ has([
   [Model.qbitTorrentsUrl("http://q:8080", 2), "offset=20", "qbit page 2"]
 ])
 eq([[Model.qbitLoginUrl("http://q:8080"), "http://q:8080/api/v2/auth/login", "qbit login url"]])
+// qBittorrent refuses a wrong password with 200 "Fails.": that is a failed
+// login, it marks the service down, and the same credentials wait an hour
+// before they go out again (plan 193).
+var refusedSnap = Model.applyLoginFailure(Object.assign(Model.emptySnapshot({ id: "q", kind: "qbittorrent", name: "qBittorrent" }), { health: "up", statusText: "Reachable" }))
+eq([
+  [Model.qbitLoginOk(200, "Ok."), true, "qbit login ok"], [Model.qbitLoginOk(200, "Fails."), false, "qbit 200 Fails. is refused"],
+  [Model.qbitLoginOk(403, "Your IP address has been banned"), false, "qbit ban is refused"], [Model.qbitLoginOk(0, ""), false, "qbit no answer is refused"],
+  [refusedSnap.health, "down", "a refused login is down"], [refusedSnap.statusText, "Login failed", "and says why"],
+  [Model.decideHealth("up", 401, 0).commit, true, "a refused login commits at once"],
+  [Model.QBIT_LOGIN_RETRY_MS, 3600000, "a refused login waits an hour"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "k", 1000 + 2000), true, "the same credentials wait"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "k", 1000 + Model.QBIT_LOGIN_RETRY_MS), false, "until the hour has passed"],
+  [Model.qbitLoginHeld({ key: "k", at: 1000 }, "other", 1000 + 2000), false, "new credentials go out at once"],
+  [Model.qbitLoginHeld({ key: "k", at: 5000 }, "k", 1000), false, "a clock set back does not hold forever"],
+  [Model.qbitLoginHeld(undefined, "k", 1000), false, "nothing refused, nothing held"],
+  [Model.qbitLoginHeld({ key: "", at: 1000 }, "", 1000), false, "an empty key never holds"]
+])
 var manyTorrents = []
 for (var ti = 0; ti < 25; ti++) {
   manyTorrents.push({ hash: "h" + ti, name: "t" + ti, state: "pausedUP", progress: 1, dlspeed: 0, upspeed: 0, eta: 0, size: 1 })
