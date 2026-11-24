@@ -14,7 +14,9 @@
   "Animations disabled": "Animations disabled",
   "Animations enabled": "Animations enabled",
   "Boot splash not rebuilt": "Boot splash not rebuilt",
+  "Capture copied": "Capture copied",
   "Choose one with: haseen setup default agent <name>": "Choose one with: haseen setup default agent <name>",
+  "Click to diagnose with AI": "Click to diagnose with AI",
   "Click to run %1 pending migrations.": {
     "one": "Click to run %1 pending migration.",
     "other": "Click to run %1 pending migrations."
@@ -22,6 +24,8 @@
   "Colour copied": "Colour copied",
   "Copied %1 so an agent can edit it": "Copied %1 so an agent can edit it",
   "Copied text from the selection": "Copied text from the selection",
+  "Copied the text in the selection": "Copied the text in the selection",
+  "Diagnose": "Diagnose",
   "Exporter unreachable at %1": "Exporter unreachable at %1",
   "GPU mode: %1": "GPU mode: %1",
   "Interface language: %1": "Interface language: %1",
@@ -34,10 +38,12 @@
   "No-gaps mode off": "No-gaps mode off",
   "No-gaps mode on": "No-gaps mode on",
   "Omasnap failed (exit %1): nothing was saved, copied or uploaded": "Omasnap failed (exit %1): nothing was saved, copied or uploaded",
+  "Paste it into %1": "Paste it into %1",
   "Pending haseen migrations": "Pending haseen migrations",
   "Per-monitor workspaces off": "Per-monitor workspaces off",
   "Per-monitor workspaces on": "Per-monitor workspaces on",
   "Plugin link refused": "Plugin link refused",
+  "Program crashed: %1": "Program crashed: %1",
   "QR code copied to clipboard": "QR code copied to clipboard",
   "Quota": "Quota",
   "Reminder": "Reminder",
@@ -55,7 +61,10 @@
   "Screenshot not edited": "Screenshot not edited",
   "Screenshot saved": "Screenshot saved",
   "Screenshot uploaded": "Screenshot uploaded",
+  "Searching the capture": "Searching the capture",
+  "Searching the selection": "Searching the selection",
   "Select a region containing a QR code": "Select a region containing a QR code",
+  "Select a region with text in it": "Select a region with text in it",
   "Single-window square ratio off": "Single-window square ratio off",
   "Single-window square ratio on": "Single-window square ratio on",
   "Sound recording error": "Sound recording error",
@@ -80,11 +89,16 @@
   "Updates are ready": "Updates are ready",
   "Updating the boot splash": "Updating the boot splash",
   "Workspace layout set to %1": "Workspace layout set to %1",
+  "Your %1 minutes are up": {
+    "one": "Your %1 minute is up",
+    "other": "Your %1 minutes are up"
+  },
   "ffmpeg exited (%1)": "ffmpeg exited (%1)",
   "gpu-screen-recorder exited (%1)": "gpu-screen-recorder exited (%1)",
   "haseen: %1 new changes": {
     "one": "haseen: %1 new change",
     "other": "haseen: %1 new changes"
   },
-  "haseen: a new version": "haseen: a new version"
+  "haseen: a new version": "haseen: a new version",
+  "in %1m": "in %1m"
 }

@@ -12,6 +12,8 @@ set -Eeuo pipefail
 
 # shellcheck source=../share/haseen/lib/common.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/i18n.sh
+source "$HASEEN_PATH/lib/i18n.sh"
 
 [[ ${1:-} == -h || ${1:-} == --help ]] && {
     echo "Usage: haseen crash watch   (runs as haseen-crash-watch.service)"
@@ -44,9 +46,11 @@ announce() {
     haseen-notification-wait || return 1
     # Crash details travel as separate argv words, so a hostile process name
     # can never be re-read as a command. --exec takes the rest of the line.
+    # The toast is in the interface language, read per crash, so a change of
+    # language needs no restart (plan 200).
     haseen-notification-send -u critical \
-        "Program crashed: $name" "Click to diagnose with AI" \
-        --action-label "Diagnose" \
+        "$(i18n "Program crashed: %1" "$name")" "$(i18n "Click to diagnose with AI")" \
+        --action-label "$(i18n "Diagnose")" \
         --exec haseen-agent-crash "$pid" "$name" "$exe" "$signal"
 }
 

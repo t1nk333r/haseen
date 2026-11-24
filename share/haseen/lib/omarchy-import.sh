@@ -13,18 +13,28 @@
 HASEEN_OMARCHY_IMPORT_SH=1
 
 # A script or Lua chunk that calls an Omarchy command (omarchy-foo, or the
-# `omarchy foo` router). Paths such as ~/.config/omarchy/… and identifiers such
-# as omarchy_scale do not match. OMARCHY_LUA_AWK below carries the same rule.
+# `omarchy foo` router), also by a path to a bin directory
+# (/usr/bin/omarchy-foo, $OMARCHY_PATH/bin/omarchy-foo), which runs Omarchy's
+# own copy past haseen's answers (architecture 5.4; plan 200). Paths such as
+# ~/.config/omarchy/… and hypr.omarchy-*, and identifiers such as
+# omarchy_scale, do not match. OMARCHY_LUA_AWK below uses this same ERE on
+# multi-line chunks, so the router's gap is [[:blank:]] (space or tab, in grep
+# and awk alike): [[:space:]] would also span a newline and read a name
+# `omarchy` ending one line as a call with the next line's first word.
 # shellcheck disable=SC2034  # read by bin/haseen-import-omarchy
-OMARCHY_CMD_ERE='(^|[^A-Za-z0-9_/.~-])omarchy(-[a-z]|[[:space:]]+[a-z])'
+OMARCHY_CMD_ERE='(^|[^A-Za-z0-9_/.~-])omarchy(-[a-z]|[[:blank:]]+[a-z])|(^|[^A-Za-z0-9_.-])bin/omarchy-[a-z]'
 
 # Omarchy built-in bar widgets with a haseen built-in that does the same job,
 # and the settings whose meaning carries over unchanged (both use Qt date
-# formats for the clock). Everything else under omarchy.* that no plugin
-# directory provides is dropped and reported.
+# formats for the clock). Omarchy's menu button is haseen.logo, the mark that
+# opens haseen's menu (plan 070), and its keyboard-layout widget
+# haseen.kblayout (plan 080) (plan 200). Everything else under omarchy.* that
+# no plugin directory provides is dropped and reported.
 # shellcheck disable=SC2016  # jq program, not shell expansions
 OMARCHY_IMPORT_JQ='
 def builtin_map: {
+    "omarchy.menu": "haseen.logo",
+    "omarchy.keyboard-layout": "haseen.kblayout",
     "omarchy.workspaces": "haseen.workspaces",
     "omarchy.clock": "haseen.clock",
     "omarchy.media": "haseen.media",
@@ -117,6 +127,8 @@ def place($sec; $raw; $drawer):
                  .cfg.plugins[$hid].enabled = true
                  | (if $wloc != "" then .cfg.plugins[$hid].settings.location = $wloc else . end)
                else . end)
+            # The keyboard-layout widget ships off too; the same opt-in.
+            | (if $hid == "haseen.kblayout" then .cfg.plugins[$hid].enabled = true else . end)
           end
       elif builtin($e) then
         note("\($oid): Omarchy built-in with no haseen equivalent, dropped")
@@ -384,13 +396,13 @@ function finish(    t, code, why, helper) {
     if (loaders && (code !~ /(^|[^A-Za-z0-9_])(dofile|loadfile)([^A-Za-z0-9_]|$)/ ||
                     code !~ /XDG_STATE_HOME|\.local\/state/ ||
                     code ~ /(^|[^A-Za-z0-9_])require([^A-Za-z0-9_]|$)|OMARCHY_PATH/ ||
-                    code ~ /(^|[^A-Za-z0-9_\/.~-])omarchy(-[a-z]|[ \t]+[a-z])/ ||
+                    code ~ cmd_ere ||
                     code ~ /(^|[^A-Za-z0-9_.])o\.[A-Za-z_]+/)) {
         comments = ""; chunk = ""; depth = 0; inchunk = 0; after = 0
         return
     }
     why = ""
-    if (code ~ /(^|[^A-Za-z0-9_\/.~-])omarchy(-[a-z]|[ \t]+[a-z])/ || code ~ /\{[^}]*(omarchy|webapp|tui|focus)[ \t]*=/)
+    if (code ~ cmd_ere || code ~ /\{[^}]*(omarchy|webapp|tui|focus)[ \t]*=/)
         why = "runs an Omarchy command"
     else if (match(code, /(^|[^A-Za-z0-9_.])o\.[A-Za-z_]+/)) {
         helper = substr(code, RSTART, RLENGTH); sub(/^[^o]*/, "", helper)
@@ -445,7 +457,7 @@ END {
 # lines; G3UP is the haseen.gestures g3Up setting in effect; LOADERS=1 keeps
 # only the blocks that load generated state files.
 omarchy_lua_translate() {
-    awk -v src="$3" -v g3up="${4:-}" -v loaders="${5:-0}" "$OMARCHY_LUA_AWK" "$2" "$1"
+    awk -v src="$3" -v g3up="${4:-}" -v loaders="${5:-0}" -v cmd_ere="$OMARCHY_CMD_ERE" "$OMARCHY_LUA_AWK" "$2" "$1"
 }
 
 # omarchy_lua_begin / omarchy_lua_end NAME — the marker lines of the block an
@@ -456,14 +468,21 @@ omarchy_lua_end() { printf -- '-- <<< haseen import omarchy: %s\n' "$1"; }
 # omarchy_lua_splice TEXT_FILE NAME BLOCK_FILE — TEXT with NAME's block
 # replaced by BLOCK (removed when BLOCK is empty), or BLOCK appended after a
 # blank line when TEXT has none yet. BLOCK_FILE=/dev/null gives the text
-# outside the block, which is what the translator compares against.
+# outside the block, which is what the translator compares against. A marker
+# line matches with trailing spaces, tabs or a CR (an editor's or CRLF's).
+# An opening marker with no closing one fails (status 3, nothing printed):
+# everything after it would otherwise be taken for the block and dropped
+# (plan 200).
 omarchy_lua_splice() {
     awk -v begin="$(omarchy_lua_begin "$2")" -v end="$(omarchy_lua_end "$2")" '
+        function bare(s) { sub(/[ \t\r]+$/, "", s); return s }
         FILENAME == ARGV[1] { block = block $0 "\n"; next }
-        $0 == begin { skipping = 1; if (!done) printf "%s", block; done = 1; next }
-        skipping { if ($0 == end) skipping = 0; next }
-        { print; last = $0; lines++ }
+        bare($0) == begin { skipping = 1; if (!done) out = out block; done = 1; next }
+        skipping { if (bare($0) == end) skipping = 0; next }
+        { out = out $0 "\n"; last = $0; lines++ }
         END {
+            if (skipping) exit 3
+            printf "%s", out
             if (!done && block != "") {
                 if (lines > 0 && last != "") print ""
                 printf "%s", block

@@ -31,9 +31,15 @@ fi
 minutes=$((10#$minutes))
 shift
 custom="$*"
+# The default stays English in the terminal (and in what haseen reminder show
+# and omarchy-reminder read back); the toast is in the interface language.
 message=${custom:-"Your $minutes minutes are up"}
+body=${custom:-"$(i18n_n "Your %1 minute is up" "Your %1 minutes are up" "$minutes")"}
 
-unit="haseen-reminder-${minutes}m-$(date +%s)"
+# The PID keeps two reminders set within one second apart: the same unit
+# name would make systemd-run refuse the second after its message file had
+# replaced the first one's (plan 200).
+unit="haseen-reminder-${minutes}m-$(date +%s)-$$"
 msg_dir="${XDG_RUNTIME_DIR:-$HASEEN_USER_STATE}/haseen-reminders"
 msg_file="$msg_dir/$unit.message"
 at="$(date -d "+$minutes minutes" +%H:%M)"
@@ -44,9 +50,9 @@ if [[ -n $custom ]]; then
 fi
 run systemd-run --user --quiet --collect --on-active="${minutes}m" --unit="$unit" \
     --description="haseen reminder: $message" \
-    bash -c 'notify-send -a haseen -u critical "$3" "$1"; rm -f "$2"' bash "$message" "$msg_file" "$(i18n "Reminder")"
+    bash -c 'notify-send -a haseen -u critical "$3" "$1"; rm -f "$2"' bash "$body" "$msg_file" "$(i18n "Reminder")"
 $DRY_RUN && exit 0
 echo "Reminder at $at: $message"
 if have notify-send; then
-    notify-send -a haseen "$(i18n "Reminder set for %1" "$at")" "$message" || true
+    notify-send -a haseen "$(i18n "Reminder set for %1" "$at")" "$body" || true
 fi

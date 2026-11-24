@@ -40,8 +40,9 @@ Usage: haseen import omarchy [--from DIR] [--hypr DIR] [--state DIR] [--merge]
 Translates an Omarchy 4 setup into haseen's files:
 
   shell.json    bar position, transparency and the three sections in order.
-                Omarchy built-ins become their haseen twins (clock formats
-                carry over); add-on plugins keep their id and settings and are
+                Omarchy built-ins become their haseen twins (the menu
+                button becomes haseen.logo; clock formats carry over);
+                add-on plugins keep their id and settings and are
                 enabled, except ones haseen has ported (omagesture becomes
                 haseen.gestures, then haseen gestures apply renders it);
                 Omarchy's service plugins join "services"; idle
@@ -60,7 +61,8 @@ Translates an Omarchy 4 setup into haseen's files:
                 own files in lua/plugins stay. Needs a haseen theme set first.
   Hyprland      plain hl.* settings from monitors.lua, input.lua,
                 looknfeel.lua and autostart.lua, bindings.lua with o.bind
-                turned into haseen.bind, and from hyprland.lua only the blocks
+                turned into haseen.rebind (an imported bind replaces haseen's
+                bind on the same key), and from hyprland.lua only the blocks
                 that load generated state files (a plugin's layouts.lua)
                 -> $HYPR_DEST/{monitors,local,bindings}.lua,
                 each in a marked block a re-run replaces.
@@ -410,7 +412,13 @@ hypr_carry() {
         [[ -f $HYPR_DEST/$dest ]] && HYPR_ORIG[$dest]="$(cat -- "$HYPR_DEST/$dest")"
         HYPR_TEXT[$dest]="${HYPR_ORIG[$dest]}"
     fi
-    outside="$(omarchy_lua_splice <(printf '%s' "${HYPR_TEXT[$dest]}") "$name" /dev/null)"
+    # A block whose closing marker was edited away: everything after its
+    # opening line would be taken for it and replaced, so the file is left as
+    # it is and the reason reported (plan 200).
+    if ! outside="$(omarchy_lua_splice <(printf '%s' "${HYPR_TEXT[$dest]}") "$name" /dev/null)"; then
+        NOT_IMPORTED+=("hypr/$name: $HYPR_DEST/$dest has the line '$(omarchy_lua_begin "$name")' without its closing '$(omarchy_lua_end "$name")'; left as is (put the closing line back where the block ends, then import again)")
+        return 0
+    fi
     stream="$(omarchy_lua_translate "$src" <(printf '%s\n' "$outside") "$name" "$GESTURES_G3UP" "$loaders")"
     while IFS= read -r line; do
         kind="${line%%$'\t'*}"

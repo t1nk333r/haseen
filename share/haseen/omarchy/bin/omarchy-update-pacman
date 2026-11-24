@@ -16,7 +16,9 @@ omarchy_help "Usage: omarchy-update-pacman <pacman upgrade arguments> [--dry-run
 haseen's answer to Omarchy's command: runs a pacman system upgrade (-Syu,
 -Su) as root in a systemd scope that survives the session. Installs and
 removals go through haseen install and haseen remove." "$@"
-dry=false
+# A dry run asked for with DRY_RUN=true (common.sh read it from the
+# environment) stays one; the --dry-run word only adds to it (plan 200).
+dry=$DRY_RUN
 args=()
 for a in "$@"; do
     if [[ $a == --dry-run ]]; then dry=true; else args+=("$a"); fi
