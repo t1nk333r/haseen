@@ -2,12 +2,17 @@
 # haseen:summary Enable the SSH server (key-only logins) and open its firewall port
 # haseen:args [--dry-run] [--yes]
 set -Eeuo pipefail
-# shellcheck source=../share/haseen/lib/common.sh
-source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/packages.sh"
 # shellcheck source=../share/haseen/lib/terminal.sh
 source "$HASEEN_PATH/lib/terminal.sh"
 
-DROPIN=/etc/ssh/sshd_config.d/90-haseen.conf
+# sshd keeps the first value it reads for a keyword, and sshd_config includes
+# sshd_config.d/*.conf in name order at its top: the drop-in sorts first, so
+# no other drop-in can turn passwords or root login back on (plan 185). Its
+# old name, 90-haseen.conf, lost to every drop-in before it.
+DROPIN=/etc/ssh/sshd_config.d/01-haseen.conf
+OLD_DROPIN=/etc/ssh/sshd_config.d/90-haseen.conf
 
 usage() {
     cat <<EOF
@@ -30,14 +35,17 @@ if [[ ! -s $HOME/.ssh/authorized_keys ]]; then
     warn "$HOME/.ssh/authorized_keys is empty: password logins stay off, so nobody can log in until you add a key"
 fi
 confirm "Enable the SSH server on this machine?" || exit 1
-[[ -x $(sysroot_path /usr/bin/sshd) ]] || run_root pacman -S --needed --noconfirm openssh
+[[ -x $(sysroot_path /usr/bin/sshd) ]] || pkg_install openssh
 write_root_file "$DROPIN" 0644 <<'EOF'
 # Written by `haseen setup sshd`.
 PermitRootLogin no
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF
+[[ ! -e $(sysroot_path "$OLD_DROPIN") ]] || run_root rm -f "$OLD_DROPIN"
 run_root systemctl enable --now sshd.service
+# enable --now leaves an sshd that already runs on its old settings.
+run_root systemctl reload-or-restart sshd.service
 if [[ -x $(sysroot_path /usr/bin/ufw) ]]; then
     run_root ufw allow 22/tcp
 fi

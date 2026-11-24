@@ -16,8 +16,22 @@
 [[ -n ${HASEEN_COMMON_SH:-} ]] && return 0
 HASEEN_COMMON_SH=1
 
-DRY_RUN=${DRY_RUN:-false}
-ASSUME_YES=${ASSUME_YES:-false}
+# Every helper tests these by running them (`if $DRY_RUN`), so a value from the
+# environment other than true or false would run as a command: DRY_RUN=1 runs
+# `1`, which is not found, the test fails, and the helper did the real thing
+# (plan 185). The usual spellings are read here, once; anything else stops.
+_common_bool() {
+    case "${!1:-}" in
+    true | 1 | yes | on) printf -v "$1" true ;;
+    false | 0 | no | off | "") printf -v "$1" false ;;
+    *)
+        printf 'Error: %s=%s is neither true nor false\n' "$1" "${!1}" >&2
+        exit 1
+        ;;
+    esac
+}
+_common_bool DRY_RUN
+_common_bool ASSUME_YES
 
 # Where the installed tree lives: share/haseen next to bin/. Works for the repo
 # checkout, /usr/local (installer) and /usr (package) alike. As root it is
@@ -318,15 +332,17 @@ EOF
 }
 
 # write_root_file DEST [MODE] — write stdin as privileged file DEST. Parent
-# directories are created. Dry-run prints the content indented so the plan
-# shows exactly what would land.
+# directories that are missing are created 0755; one that exists keeps its
+# mode (install -d would chmod it: /etc/sudoers.d is 0750, plan 185).
+# Dry-run prints the content indented so the plan shows exactly what would
+# land.
 write_root_file() {
     local dest="$1" mode="${2:-0644}"
     if $DRY_RUN; then
         echo "DRYRUN: write $dest (mode $mode):"
         sed 's/^/    | /'
     else
-        sudo install -d -m 0755 "$(dirname "$dest")"
+        [[ -d $(dirname "$dest") ]] || sudo install -d -m 0755 "$(dirname "$dest")"
         sudo tee "$dest" >/dev/null
         sudo chmod "$mode" "$dest"
     fi

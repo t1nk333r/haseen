@@ -81,7 +81,7 @@ aur)
     helper="$(aur_helper)"
     if (($# == 0)); then
         if $DRY_RUN; then
-            echo "DRYRUN: pick packages from '${helper:-paru} -Slqa' with fzf, then: ${helper:-paru} -S --needed <picked>"
+            echo "DRYRUN: pick packages from '${helper:-paru} -Slqa' with fzf, then: haseen install aur <picked> (an official repo, Chaotic-AUR, [omarchy], the AUR last)"
             exit 0
         fi
         [[ -n $helper ]] || die "neither paru nor yay is installed"

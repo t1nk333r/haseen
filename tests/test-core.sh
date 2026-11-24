@@ -120,6 +120,30 @@ assert_eq "no destructive op on ~/.config/omarchy|DankMaterialShell/plugins" "" 
     "$(grep -rnE '(omarchy|DankMaterialShell)/plugins|PLUGIN_(OMARCHY|DMS)_DIR|omarchyPlugins|dmsPlugins' \
         "$REPO/bin" "$REPO/share" "$REPO/install.sh" |
         grep -E '(\brm\b|\bmv\b|rmdir|unlink|ln -s|>[^&|=]*(plugins|_DIR)|write_user_file|seed_user_file|removeFile|\.remove\()' || true)"
+# --- sudo runs only in common.sh's helpers (CLAUDE.md, plan 185) --------------
+# Static: a shell line outside common.sh with sudo in command position. Quoted
+# text, comments and heredocs (messages, usage) are left out first.
+sudo_files=()
+while IFS= read -r f; do
+    [[ $f != "$REPO/share/haseen/lib/common.sh" ]] || continue
+    head -n1 -- "$f" | grep -qE '^#!.*\b(ba)?sh\b|^# shellcheck shell=(ba)?sh' && sudo_files+=("$f")
+done < <(find "$REPO/bin" "$REPO/share" "$REPO/install.sh" -type f)
+assert_eq "no sudo outside common.sh's helpers" "" "$(awk '
+    FNR == 1 { hd = "" }
+    hd != "" { if ($0 ~ "^[[:space:]]*" hd "[[:space:]]*$") hd = ""; next }
+    /^[[:space:]]*#/ { next }
+    {
+        line = $0
+        if (match(line, /<<-?[[:space:]]*["\047]?[A-Za-z_]+/)) {
+            t = substr(line, RSTART, RLENGTH); sub(/^<<-?[[:space:]]*["\047]?/, "", t); hd = t
+        }
+        gsub(/"([^"\\]|\\.)*"/, "\"\"", line)
+        gsub(/\047[^\047]*\047/, "", line)
+        sub(/[[:space:]]#.*/, "", line)
+        if (line ~ /(^|[;&|({]|then|do|else|\$\()[[:space:]]*sudo[[:space:]]/) print FILENAME ":" FNR ": " $0
+    }' "${sudo_files[@]}")"
+unset sudo_files
+
 # Behaviour: every plugin command run against an Omarchy and a DMS plugin
 # leaves both source trees byte-identical.
 sandbox plugin-preserve
@@ -140,6 +164,33 @@ for id in me.keep dmsKeep; do
 done
 assert_eq "plugin commands never change Omarchy/DMS plugin trees" "$before" "$(tree_sum)"
 
+# --- DRY_RUN and ASSUME_YES from the environment (plan 185) -------------------
+# The helpers run them as commands (`if $DRY_RUN`): DRY_RUN=1 once ran `1`,
+# failed the test and mutated for real. The usual spellings are read once.
+sandbox dry-run-env
+capture env DRY_RUN=1 bash -Eeuo pipefail -c 'source "$HASEEN_PATH/lib/common.sh"; run touch "$HOME/mutated"'
+assert_status "DRY_RUN=1 is a dry run" 0 "$STATUS"
+assert_contains "DRY_RUN=1 plans" "$OUTPUT" "DRYRUN: touch $HOME/mutated"
+[[ ! -e $HOME/mutated ]] && _pass || _fail "DRY_RUN=1 changes nothing"
+capture env DRY_RUN=maybe bash -Eeuo pipefail -c 'source "$HASEEN_PATH/lib/common.sh"; run touch "$HOME/mutated"'
+assert_status "an unknown DRY_RUN stops" 1 "$STATUS"
+assert_contains "an unknown DRY_RUN is named" "$OUTPUT" "DRY_RUN=maybe is neither true nor false"
+[[ ! -e $HOME/mutated ]] && _pass || _fail "an unknown DRY_RUN changes nothing"
+capture env DRY_RUN=0 ASSUME_YES=yes bash -c 'source "$HASEEN_PATH/lib/common.sh"; echo "$DRY_RUN $ASSUME_YES"'
+assert_eq "0 and yes read as false and true" "false true" "$OUTPUT"
+
+# --- write_root_file leaves an existing parent's mode alone (plan 185) --------
+# install -d -m 0755 chmods a directory that exists: /etc/sudoers.d is 0750.
+sandbox write-root-mode
+stub sudo 'exec "$@"'
+mkdir -m 0750 "$SANDBOX/sudoers.d"
+capture env DRY_RUN=false bash -c 'source "$HASEEN_PATH/lib/common.sh"; printf "x\n" | write_root_file "$1" 0440; printf "y\n" | write_root_file "$2"' \
+    _ "$SANDBOX/sudoers.d/90-test" "$SANDBOX/new/dir/file"
+assert_status "write_root_file wrote" 0 "$STATUS"
+assert_eq "existing parent keeps its mode" 750 "$(stat -c %a "$SANDBOX/sudoers.d")"
+assert_eq "file gets its mode" 440 "$(stat -c %a "$SANDBOX/sudoers.d/90-test")"
+assert_eq "missing parents are created" y "$(cat "$SANDBOX/new/dir/file")"
+
 # --- aur: entries: official repo, then Chaotic-AUR, AUR last (owner) --------
 sandbox pkg-source
 fx="$SANDBOX/fx"
@@ -158,13 +209,44 @@ assert_not_contains "chaotic hit never builds" "$OUTPUT" "paru -S"
 src ttfx
 assert_contains "AUR only as the last resort" "$OUTPUT" "DRYRUN: paru -S --needed ttfx"
 assert_contains "last-resort warning" "$OUTPUT" "building from the AUR (last resort): ttfx"
+# A PKGBUILD's sudo never finds the timestamp the pacman step warmed: the build
+# runs cold, on the sudo on PATH and with no sudo loop (plan 185).
+assert_contains "AUR build runs cold" "$OUTPUT" \
+    $'DRYRUN: sudo -k\nDRYRUN: paru -S --needed ttfx --sudo sudo --nosudoloop (each sudo it runs is sudo -N'
 src xpadneo-dkms ttfx lib32-nvidia-580xx-utils
 assert_contains "mixed: chaotic part" "$OUTPUT" "pacman -S --needed chaotic-aur/xpadneo-dkms"
-assert_eq "mixed: only ttfx is built from the AUR" "DRYRUN: paru -S --needed ttfx" "$(grep 'paru -S' <<<"$OUTPUT")"
+assert_eq "mixed: only ttfx is built from the AUR" \
+    "DRYRUN: paru -S --needed ttfx --sudo sudo --nosudoloop (each sudo it runs is sudo -N: it asks, and caches nothing)" \
+    "$(grep 'paru -S' <<<"$OUTPUT")"
 assert_dry_pure "package source order" "$OUTPUT"
+# What the helper would install for an AUR build gets the omarchy guard too:
+# a build whose dependencies bring in omarchy-settings is refused under --yes
+# (plan 185). The fixture's NAME.deps stands in for the AUR's answer.
+printf 'cmake\nomarchy-settings\n' >"$fx/var/lib/pacman/sync/omarfoo.deps"
+capture env HASEEN_SYSROOT="$fx" DRY_RUN=true ASSUME_YES=true bash -c 'source "$HASEEN_PATH/lib/packages.sh"; pkg_install_aur "$@"' _ omarfoo
+assert_status "AUR build pulling omarchy-settings refused under --yes" 1 "$STATUS"
+assert_contains "AUR closure listed" "$OUTPUT" "building them would install: omarfoo cmake omarchy-settings"
+assert_contains "AUR closure refusal" "$OUTPUT" "omarfoo would bring in omarchy packages, which --yes never accepts"
+assert_not_contains "refused AUR build never starts" "$OUTPUT" "paru -S --needed omarfoo"
+src omarfoo
+assert_status "without --yes the dry run asks and goes on" 0 "$STATUS"
+assert_contains "without --yes: the guard warns" "$OUTPUT" "installing omarfoo also installs omarchy-settings"
+command rm -f "$fx/var/lib/pacman/sync/omarfoo.deps"
 sed -i '/chaotic-aur/,+1d' "$fx/etc/pacman.conf"
 src ttfx
 assert_contains "without Chaotic-AUR: suggests enabling it" "$OUTPUT" "haseen layer apply chaotic"
+# A dry run that applies chaotic before this layer plans from Chaotic-AUR, as
+# the real run will once chaotic is enabled; it never plans an AUR build, or
+# needs a helper, for it (plan 185).
+capture env HASEEN_SYSROOT="$fx" DRY_RUN=true HASEEN_APPLY_LAYERS="base chaotic desktop" LAYER_NAME=desktop \
+    bash -c 'source "$HASEEN_PATH/lib/packages.sh"; pkg_install_aur "$@"' _ ttfx
+assert_status "dry run after chaotic: planned" 0 "$STATUS"
+assert_contains "dry run after chaotic: from Chaotic-AUR" "$OUTPUT" "DRYRUN: sudo pacman -S --needed chaotic-aur/ttfx"
+assert_contains "dry run after chaotic: says why" "$OUTPUT" "planned from Chaotic-AUR, which this run enables first: ttfx"
+assert_not_contains "dry run after chaotic: no AUR build" "$OUTPUT" "paru -S"
+capture env HASEEN_SYSROOT="$fx" DRY_RUN=true HASEEN_APPLY_LAYERS="base desktop chaotic" LAYER_NAME=desktop \
+    bash -c 'source "$HASEEN_PATH/lib/packages.sh"; pkg_install_aur "$@"' _ ttfx
+assert_contains "chaotic applied after this layer: still the AUR" "$OUTPUT" "DRYRUN: paru -S --needed ttfx"
 
 capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
 assert_dry_pure "chaotic layer" "$OUTPUT"
@@ -177,6 +259,31 @@ printf '[chaotic-aur]\nInclude = /etc/pacman.d/chaotic-mirrorlist\n' >>"$fx/etc/
 capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
 assert_contains "chaotic: idempotent when it works" "$OUTPUT" "Chaotic-AUR already enabled"
 assert_not_contains "chaotic: no second stanza" "$OUTPUT" "append to /etc/pacman.conf"
+# Applied after omarchy-repo, chaotic puts its stanza before [omarchy], which
+# stays last (plan 185); a dry run that applies both says so.
+command cp -f "$fx/etc/pacman.conf" "$SANDBOX/pacman.conf.keep"
+printf '[options]\nArchitecture = auto\n[core]\nInclude = x\n[omarchy]\nServer = x\n' >"$fx/etc/pacman.conf"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply chaotic --dry-run
+assert_dry_pure "chaotic after omarchy-repo" "$OUTPUT"
+assert_contains "chaotic after omarchy-repo: stanza before [omarchy]" "$OUTPUT" \
+    $'DRYRUN: write /etc/pacman.conf (mode 0644):\n    | [options]\n    | Architecture = auto\n    | [core]\n    | Include = x\n    | [chaotic-aur]\n    | Include = /etc/pacman.d/chaotic-mirrorlist\n    | \n    | [omarchy]\n    | Server = x\n'
+assert_not_contains "chaotic after omarchy-repo: no append after it" "$OUTPUT" "append to /etc/pacman.conf"
+sed -i '/^\[omarchy\]/,+1d' "$fx/etc/pacman.conf"
+capture env HASEEN_SYSROOT="$fx" haseen layer apply omarchy-repo chaotic --dry-run
+assert_contains "omarchy-repo then chaotic in one dry run: before [omarchy]" "$OUTPUT" \
+    "DRYRUN: put the [chaotic-aur] stanza before the [omarchy] section omarchy-repo adds to /etc/pacman.conf"
+# pacman can list [omarchy] from an Include'd file, with no plain [omarchy]
+# line to put the stanza before: chaotic appends it rather than rewrite the
+# file unchanged and carry on without Chaotic-AUR (plan 185).
+capture env HASEEN_SYSROOT="$fx" DRY_RUN=true bash -c 'source "$HASEEN_PATH/lib/layers.sh"; preflight_all
+    LAYER_DIR="$HASEEN_PATH/layers/chaotic"; source "$LAYER_DIR/layer.sh"
+    omarchy_repo_enabled() { true; }; layer_apply'
+assert_status "[omarchy] from an Include: applied" 0 "$STATUS"
+assert_contains "[omarchy] from an Include: stanza appended" "$OUTPUT" \
+    $'DRYRUN: append to /etc/pacman.conf:\n    | \n    | [chaotic-aur]'
+assert_contains "[omarchy] from an Include: says why" "$OUTPUT" "is enabled but not as a plain [omarchy] line"
+assert_not_contains "[omarchy] from an Include: no unchanged rewrite" "$OUTPUT" "DRYRUN: write /etc/pacman.conf"
+command cp -f "$SANDBOX/pacman.conf.keep" "$fx/etc/pacman.conf"
 
 # --- [omarchy] repo: after Chaotic-AUR, before the AUR; never Omarchy itself --
 printf '[omarchy]\nSigLevel = Required DatabaseOptional\nServer = x\n' >>"$fx/etc/pacman.conf"

@@ -147,6 +147,9 @@ assert_contains "package: picker plan" "$OUTPUT" "pick packages from 'pacman -Sl
 capture haseen install aur --dry-run
 all+="$OUTPUT"
 assert_contains "aur: picker plan" "$OUTPUT" "-Slqa' with fzf"
+# The picked names take the source order, not a direct build (plan 185).
+assert_contains "aur: picker plan names the source order" "$OUTPUT" "then: haseen install aur <picked> (an official repo, Chaotic-AUR, [omarchy], the AUR last)"
+assert_not_contains "aur: picker plan builds nothing directly" "$OUTPUT" "-S --needed <picked>"
 capture haseen install app no-such-app --dry-run
 assert_status "app: unknown refused" 1 "$STATUS"
 assert_contains "app: unknown message" "$OUTPUT" "not in the catalogue"

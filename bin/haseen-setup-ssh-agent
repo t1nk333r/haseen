@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # haseen:summary Use the GNOME keyring SSH agent (gcr-ssh-agent) for this user
-# haseen:args [--dry-run]
+# haseen:args [--dry-run] [--yes]
 set -Eeuo pipefail
-# shellcheck source=../share/haseen/lib/common.sh
-source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/common.sh"
+# shellcheck source=../share/haseen/lib/packages.sh
+source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/packages.sh"
 
 ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/uwsm/env.d/61-haseen-ssh-agent"
 
 usage() {
     cat <<EOF
-Usage: haseen setup ssh-agent [--dry-run]
+Usage: haseen setup ssh-agent [--dry-run] [--yes]
 
-Enables gcr-ssh-agent.socket for this user (installs gcr-4 when missing) and
-exports SSH_AUTH_SOCK=\$XDG_RUNTIME_DIR/gcr/ssh through
-$ENV_FILE, read at the next login.
+Enables gcr-ssh-agent.socket for this user (installs gcr-4 when missing;
+pacman asks unless --yes) and exports SSH_AUTH_SOCK=\$XDG_RUNTIME_DIR/gcr/ssh
+through $ENV_FILE, read at the next login.
 EOF
 }
 parse_common_flags "$@"
@@ -22,7 +22,7 @@ parse_common_flags "$@"
     exit 2
 }
 require_not_root
-[[ -e $(sysroot_path /usr/lib/systemd/user/gcr-ssh-agent.socket) ]] || run_root pacman -S --needed --noconfirm gcr-4
+[[ -e $(sysroot_path /usr/lib/systemd/user/gcr-ssh-agent.socket) ]] || pkg_install gcr-4
 run systemctl --user enable --now gcr-ssh-agent.socket
 write_user_file "$ENV_FILE" <<'EOF'
 # Written by `haseen setup ssh-agent`.
