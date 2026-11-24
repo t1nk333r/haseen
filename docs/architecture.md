@@ -517,7 +517,11 @@ screensaver's own terminal sets that off. During a cycle, therefore:
 
 A plugin is enabled when it appears in a bar section or in `services`, and
 `plugins.<id>.enabled` is not `false`. Unknown ids are skipped with one log line.
-Nothing appears on screen for them.
+Nothing appears on screen for them. A panel or launcher provider needs no
+place, so installing does not leave it on: `haseen plugin install` without
+`--enable` writes a new id as `enabled: false` (an id `shell.json` already
+places or switches keeps that, and so does a reinstall over a plugin that is
+already there), and refuses the reserved `haseen.*` namespace (plan 187).
 
 ### 5.4 Compat adapters (`shell/Compat/`)
 
