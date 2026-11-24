@@ -110,6 +110,24 @@ cannot pass by finding nothing, and it requires more than 100 adapted files
 in the repository. Against the old NOTICE.md it lists exactly the seven
 files above (3/4 checks pass); against the new one, 4/4 pass.
 
+The review round widened the wording. A header that says the code is
+"after", "follows" or "based on" Omarchy or DMS now counts too, but only
+beside an "MIT, Copyright" notice. Without that guard the looser verbs
+catch headers that describe a look or an order, not borrowed code:
+`share/haseen/shell/plugins/haseen.capture/Panel.qml:9` (a toolbar "after
+the DMS ScreenCapture Toolbar", "none of its code: it has no license") and
+`share/haseen/omarchy/remove-lib.sh:3` ("Sourced after omarchy/lib.sh").
+With the guard the wider scan finds 563 files instead of 530. The 33 new
+ones are real attributions: 27 compat commands under
+`share/haseen/omarchy/bin/` that say "Follows Omarchy bin/…" (for example
+`omarchy-hook:3`), `bin/haseen-password:5` ("follows omarchy
+bin/omarchy-drive-password"), `bin/haseen-language:5`, and four shell files
+that say "after Omarchy's …", among them `share/haseen/shell/Bar.qml:22`
+and `share/haseen/shell/Haseen/I18n.qml:8`. NOTICE.md already names all
+33. The small tree gained four fixtures: an "after … MIT, Copyright"
+file and a "based on … MIT, Copyright" file, both reported, and the two
+guarded cases above, both skipped.
+
 **Rejected.** Adding haseen.imagepicker to row 107. That row is plan 152's
 carousel, a different piece of Omarchy code adapted at a different time.
 
@@ -289,6 +307,22 @@ with a selector variant):
 
 Those tests are outside this audit's findings. Each can move to scans once
 its files have a covering test.
+
+## Review
+
+An independent Sonnet review approved the branch with two nits.
+
+- **The metadata half of finding 8 is deferred, not fixed.** The reviewer
+  accepted the reasoning in finding 8 and noted that the decision is still
+  the owner's. It stays deferred. Nothing in this plan changes the
+  repository's `user.email` or adds a metadata scan.
+- **test-notice.sh knew only "adapted|ported|copied|taken|derived from".**
+  The reviewer suggested leaving it until a missed form turned up. A
+  repository scan found two forms already: 33 headers say "after Omarchy's
+  …" or "follows Omarchy …" beside an MIT notice. NOTICE.md already named
+  all 33, so no row was missing, but the scan would not have caught a new
+  file with that wording. The widened wording is in findings 3 and 4. test-notice.sh
+  still gives 4/4.
 
 ## Verification
 

@@ -7,9 +7,10 @@
 # The licence rule (AGENTS.md): code adapted from Omarchy or DankMaterialShell
 # keeps the upstream notice in its file header and has a row in NOTICE.md.
 # Every file whose leading comments say it was adapted, ported, copied, taken
-# or derived from either one must be named in NOTICE.md's Where column (plan
-# 201: haseen.imagepicker, init.lua, input.lua, greeter.sh and two seeds had
-# their header notice and no row).
+# or derived from either one (or after, following or based on it, beside an
+# MIT notice) must be named in NOTICE.md's Where column (plan 201:
+# haseen.imagepicker, init.lua, input.lua, greeter.sh and two seeds had their
+# header notice and no row).
 
 sandbox notice
 
@@ -30,14 +31,20 @@ notice_regexes() {
 
 # adapted_files ROOT PATH... — the files under ROOT/PATH... (relative to ROOT)
 # whose first 60 lines, comment markers stripped, say they were adapted from
-# Omarchy or DankMaterialShell. Symbolic links are the dispatcher's names, not
-# code of their own.
+# Omarchy or DankMaterialShell. The looser wordings ("after Omarchy's menu",
+# "follows", "based on") count only beside an "MIT, Copyright" notice: without
+# one they describe a look or an order (a capture bar after a DMS toolbar that
+# has no licence, a file sourced after omarchy/lib.sh), not borrowed code.
+# Symbolic links are the dispatcher's names, not code of their own.
 adapted_files() {
     local root=$1
     shift
     (cd "$root" && find "$@" -type f -print0 2>/dev/null) | (cd "$root" && LC_ALL=C xargs -0 -r awk '
         function judge() {
             if (text ~ /(adapted|ported|copied|taken|derived)[[:space:]]+from[[:space:]]+(the[[:space:]]+)?(omarchy|dms|dankmaterialshell)/)
+                print prev
+            else if (text ~ /(after|follows|(based|modell?ed)[[:space:]]+on)[[:space:]]+(the[[:space:]]+)?(omarchy|dms|dankmaterialshell)/ &&
+                text ~ /[^a-z]mit,[[:space:]]+copyright/)
                 print prev
         }
         FNR == 1 { if (prev != "") judge(); prev = FILENAME; text = "" }
@@ -66,6 +73,10 @@ printf -- '-- The rule is ported\n-- from Omarchy default/hypr/input.lua.\n' >"$
 printf '#!/usr/bin/env bash\n# Adapted from Omarchy bin/thing.\n' >"$T/bin/haseen-thing-a"
 printf '#!/usr/bin/env bash\n# Adapted from Omarchy bin/thing.\n' >"$T/bin/haseen-thing-b"
 printf '#!/usr/bin/env bash\n# Our own code; Omarchy does this differently.\n' >"$T/bin/haseen-own"
+printf '// The bar drag, after Omarchy'"'"'s ghost panel\n// (MIT, Copyright (c) someone).\n' >"$T/share/x/lib/ghost.qml"
+printf '#!/usr/bin/env bash\n# Based on DMS lib/x.sh (v1, MIT, Copyright (c) someone).\n' >"$T/share/x/lib/based.sh"
+printf '// A toolbar after the DMS one (its look, none of its code: no licence).\n' >"$T/share/x/lib/Look.qml"
+printf '#!/usr/bin/env bash\n# Sourced after omarchy/lib.sh, never executed.\n' >"$T/share/x/lib/order.sh"
 ln -s haseen-thing-a "$T/bin/omarchy-thing"
 cat >"$T/NOTICE.md" <<'MD'
 | Upstream | License | Copyright | What | Where |
@@ -76,10 +87,10 @@ MD
 notice_regexes "$T/NOTICE.md" >"$SANDBOX/re-small"
 adapted_files "$T" bin share >"$SANDBOX/adapted-small"
 assert_eq "the scan reads comment markers across lines and skips links and own code" \
-    "bin/haseen-thing-a bin/haseen-thing-b share/x/lib/rule.lua share/x/lib/split.sh share/x/plugins/haseen.listed/A.qml" \
+    "bin/haseen-thing-a bin/haseen-thing-b share/x/lib/based.sh share/x/lib/ghost.qml share/x/lib/rule.lua share/x/lib/split.sh share/x/plugins/haseen.listed/A.qml" \
     "$(paste -sd' ' "$SANDBOX/adapted-small")"
 assert_eq "a file in no Where cell is reported; braces, globs and directories match" \
-    "bin/haseen-thing-b share/x/lib/rule.lua" \
+    "bin/haseen-thing-b share/x/lib/ghost.qml share/x/lib/rule.lua" \
     "$(unlisted "$SANDBOX/re-small" "$SANDBOX/adapted-small" | paste -sd' ')"
 
 # --- this repository ---------------------------------------------------------------
