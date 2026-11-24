@@ -7,6 +7,17 @@
 
 // The extensions the scan asks `find` for, and that Qt's image plugins read.
 const EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"];
+// The ones the default action takes: `haseen theme bg set` refuses anything
+// but PNG, JPEG, WebP, GIF and BMP (bin/haseen-theme-bg image_ok), and the
+// panel has closed by the time it fails, so an AVIF pick did nothing and
+// said nothing (plan 197).
+const BACKGROUND_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
+
+// What the scan lists: every image for a configured command, only what the
+// background takes for the default one.
+function extensionsFor(customCommand) {
+    return customCommand ? EXTENSIONS : BACKGROUND_EXTENSIONS;
+}
 
 // "~/Pictures" and "$HOME/Pictures" name the same directory as the CLI does.
 function expandHome(path, home) {

@@ -114,6 +114,13 @@ capture haseen menu select Pick
 assert_status "no options is a usage error" 1 "$STATUS"
 assert_contains "saying so" "$OUTPUT" "nothing to choose from"
 
+# No menu plugin on: the shell says so instead of a PID, and the caller
+# stops at once rather than waiting as long as the shell lives (plan 196).
+stub qs 'echo unavailable'
+capture timeout 10 haseen menu select Pick a b
+assert_status "no menu to show the list ends the wait" 1 "$STATUS"
+assert_contains "saying how to get one" "$OUTPUT" "haseen plugin enable haseen.menu"
+
 # A shell that dies with the list open: the caller stops waiting.
 stub qs 'sh -c "exit 0" & wait; echo 999999'
 capture timeout 10 haseen menu select Pick a b

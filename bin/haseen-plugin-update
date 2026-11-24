@@ -55,6 +55,13 @@ for id in "${ids[@]}"; do
     url="$(jq -r .repo <<<"$entry")"
     path="$(jq -r .path <<<"$entry")"
     old="$(jq -r .commit <<<"$entry")"
+    # Only a link into the checkout is update's to move. A pinned id can also
+    # be a real directory (one restore was told to leave alone) or a link to
+    # the user's own checkout, and registry_link would delete it unasked.
+    if [[ -e $PLUGIN_USER_DIR/$id || -L $PLUGIN_USER_DIR/$id ]] && ! registry_linked "$id" "$url"; then
+        warn "skipping $id: $PLUGIN_USER_DIR/$id is not a link into its checkout, so it is left as it is (haseen plugin install $id replaces it)"
+        continue
+    fi
 
     resolved="$(registry_fetch "$url")"
     if [[ $resolved == "$old" ]]; then
@@ -69,8 +76,8 @@ for id in "${ids[@]}"; do
     failed=()
     while IFS= read -r member; do
         mid="$(jq -r .id <<<"$member")"
-        # A sibling that is not a link to the checkout is not affected.
-        [[ $mid == "$id" || -L $PLUGIN_USER_DIR/$mid ]] || continue
+        # A sibling that is not a link into the checkout is not affected.
+        [[ $mid == "$id" ]] || registry_linked "$mid" "$url" || continue
         registry_link "$mid" "$url" "$(jq -r .path <<<"$member")"
         registry_validate "$mid" || failed+=("$mid")
     done <<<"$family"

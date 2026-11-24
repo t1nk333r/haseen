@@ -6,7 +6,9 @@
 //! colors.toml. Recorded with Go 1.27.3 and golang.org/x/image v0.46.0 on
 //! amd64 before the Go code was removed; corpus/generate.py made the
 //! images. Every comparison is byte for byte: the decoders, the scaler and
-//! the float functions are Go's.
+//! the float functions are Go's. One line of the colors.toml was changed by
+//! hand since: selection_foreground is the foreground (color7), where Go
+//! wrote the background, unreadable on the selection (plan 194).
 
 use haseen_palette::anchors::clamp_anchors;
 use haseen_palette::generate::{

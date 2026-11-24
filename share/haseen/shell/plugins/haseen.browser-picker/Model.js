@@ -33,12 +33,22 @@ function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
+// The schemes whose URLs the WHATWG URL standard, which browsers follow, calls
+// special: in them "\" separates the path like "/".
+var SPECIAL_SCHEMES = ["http", "https", "ws", "wss", "ftp", "file"]
+
 // Host of a URL, lowercased, without userinfo or port. Returns "" for the
 // things that are not URLs at all — a bare search term, a file path — because
-// those carry no routing signal.
+// those carry no routing signal. The host must be the one the browser will
+// load, or a rule for one site opens another in its profile (plan 198): the
+// browser drops tabs and newlines anywhere, and reads
+// "https://attacker.example\@bank.example/" as attacker.example.
 function hostOf(url) {
-  var text = stringValue(url).trim()
+  var text = stringValue(url).trim().replace(/[\t\n\r]/g, "")
   if (!text) return ""
+  var scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(text)
+  if (!scheme || SPECIAL_SCHEMES.indexOf(scheme[1].toLowerCase()) >= 0)
+    text = text.replace(/\\/g, "/")
   var rest = text
   var schemeEnd = rest.indexOf("://")
   if (schemeEnd >= 0) rest = rest.slice(schemeEnd + 3)

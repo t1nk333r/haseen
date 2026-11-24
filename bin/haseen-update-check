@@ -11,10 +11,10 @@
 # only compares the local database with the AUR RPC.
 #
 # checkupdates races on db.lck when two callers share a database directory, so
-# this command keeps its own one under $XDG_RUNTIME_DIR/haseen and holds a
-# flock around the check. A bar on every monitor and a "Check now" therefore
-# never collide, and a caller arriving right behind another reuses its result
-# from a short-lived cache instead of fetching again.
+# this command keeps its own one under $XDG_RUNTIME_DIR/haseen (the state dir
+# without one) and holds a flock around the check. A bar on every monitor and
+# a "Check now" therefore never collide, and a caller arriving right behind
+# another reuses its result from a short-lived cache instead of fetching again.
 set -Eeuo pipefail
 
 HASEEN_PATH="${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}"
@@ -52,7 +52,17 @@ for arg in "${REST[@]}"; do
 done
 require_not_root
 
-run_dir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/haseen"
+# $XDG_RUNTIME_DIR is the user's own 0700 directory. Without one (su, cron,
+# some ssh sessions) the fallback was a shared ${TMPDIR:-/tmp}/haseen, which
+# another local user could create first: their cache would be served as this
+# user's result, and a lock linked to one of this user's files truncated it
+# (plan 186). The user's state dir stands in instead, and either one must be
+# a directory of this user's own, not a link, before anything in it is read.
+if [[ -n ${XDG_RUNTIME_DIR:-} ]]; then
+    run_dir="$XDG_RUNTIME_DIR/haseen"
+else
+    run_dir="$HASEEN_USER_STATE/updates"
+fi
 db_dir="$run_dir/updates-db"
 lock_file="$run_dir/updates.lock"
 cache_file="$run_dir/updates.json"
@@ -140,12 +150,27 @@ if $DRY_RUN; then
     exit 0
 fi
 
+# require_run_dir_ours — go on only when the directory is a real one this
+# user owns, or (before mkdir) is not there yet; otherwise report and stop.
+require_run_dir_ours() {
+    [[ ! -e $run_dir && ! -L $run_dir ]] && return 0
+    [[ -d $run_dir && ! -L $run_dir && -O $run_dir ]] && return 0
+    errors+=("$run_dir is not this user's own directory; no check was run")
+    emit false
+    exit 0
+}
+require_run_dir_ours
+
 if ! $force && cache_fresh; then
     cat -- "$cache_file"
     exit 0
 fi
 
-mkdir -p -- "$run_dir"
+# The parents as usual, the run dir itself 0700; a caller racing this one
+# may create it first, which the check after it accepts when it is ours.
+mkdir -p -- "${run_dir%/*}"
+mkdir -m 0700 -- "$run_dir" 2>/dev/null || true
+require_run_dir_ours
 exec {lock_fd}>"$lock_file"
 if ! flock -w "${HASEEN_UPDATES_LOCK_TIMEOUT:-90}" "$lock_fd"; then
     errors+=("timed out waiting for another update check")

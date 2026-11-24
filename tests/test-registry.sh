@@ -81,6 +81,27 @@ assert_status "credentials in a URL are refused" 1 "$STATUS"
 capture haseen plugin registry add dms "https://example.invalid/x.git"
 assert_status "the built-in source cannot be shadowed" 1 "$STATUS"
 
+# remove reads the file before it writes it (plan 187): piping jq on the
+# file into a write of the same file truncated it, dropping every source.
+capture haseen plugin registry add extra "https://example.invalid/extra.git"
+assert_status "a source is added" 0 "$STATUS"
+capture haseen plugin registry remove extra
+assert_status "and removed" 0 "$STATUS"
+assert_eq "removing one source keeps the others" "local" \
+    "$(jq -r '[.sources[].name] | join(" ")' "$XDG_CONFIG_HOME/haseen/registries.json")"
+capture haseen plugin registry remove extra
+assert_status "a source that is gone is not removed twice" 1 "$STATUS"
+registries="$(cat "$XDG_CONFIG_HOME/haseen/registries.json")"
+: >"$XDG_CONFIG_HOME/haseen/registries.json"
+capture haseen plugin registry add extra "https://example.invalid/extra.git"
+assert_eq "an empty file is no sources, and add writes one" "extra" \
+    "$(jq -r '[.sources[].name] | join(" ")' "$XDG_CONFIG_HOME/haseen/registries.json")"
+printf 'not json\n' >"$XDG_CONFIG_HOME/haseen/registries.json"
+capture haseen plugin registry remove extra
+assert_status "a file that is not JSON is refused" 1 "$STATUS"
+assert_eq "and left as it was" "not json" "$(cat "$XDG_CONFIG_HOME/haseen/registries.json")"
+printf '%s\n' "$registries" >"$XDG_CONFIG_HOME/haseen/registries.json"
+
 capture haseen plugin search clock
 assert_status "search finds an indexed plugin" 0 "$STATUS"
 assert_contains "by its description" "$OUTPUT" "monorepo"
@@ -102,6 +123,14 @@ assert_eq "the lockfile pins the commit it took" "$first_commit" \
 assert_eq "and the repository it came from" "$repo" \
     "$(jq -r '.plugins["alice.load"].repo' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
 assert_eq "the lockfile has a version" 1 "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
+# Installing does not turn a plugin on (plan 187): the shell counts anything
+# shell.json does not switch off as on, so a new id is written down as off.
+assert_eq "an install without --enable leaves the plugin off" "false" \
+    "$(jq -r '.plugins["alice.load"].enabled' "$XDG_CONFIG_HOME/haseen/shell.json")"
+assert_contains "and says how to turn it on" "$OUTPUT" "off until: haseen plugin enable alice.load"
+{ cat "$XDG_CONFIG_HOME/haseen/shell.json" 2>/dev/null || echo '{}'; } |
+    jq '.plugins["alice.clock"].enabled = true' >"$SANDBOX/shell.json"
+mv "$SANDBOX/shell.json" "$XDG_CONFIG_HOME/haseen/shell.json"
 
 capture haseen plugin install alice.clock --yes
 assert_status "a plugin inside a monorepo installs" 0 "$STATUS"
@@ -112,8 +141,20 @@ assert_eq "the pin records the subdirectory" "packages/alice.clock" \
 assert_eq "both plugins share one checkout" 1 \
     "$(find "$XDG_CONFIG_HOME/haseen/plugins/.repos" -mindepth 1 -maxdepth 1 | wc -l)"
 
+assert_eq "an id shell.json already switches keeps the user's choice" "true" \
+    "$(jq -r '.plugins["alice.clock"].enabled' "$XDG_CONFIG_HOME/haseen/shell.json")"
+
 capture haseen plugin search clock
 assert_contains "search marks what is installed" "$OUTPUT" "(installed)"
+
+# A user copy wins over the built-in, so a foreign haseen.lock would be the
+# lock screen: the namespace `plugin new` reserves is refused here too.
+mkdir -p "$SANDBOX/repos/haseen.lock"
+capture haseen plugin install "$SANDBOX/repos/haseen.lock" --yes
+assert_status "an id in the haseen.* namespace is refused" 1 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "reserved for built-in plugins"
+assert_eq "before anything is cloned or linked" "none" \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/haseen.lock ]] || echo none)"
 
 # A plugin that does not validate is not kept: upstream enables foreign QML
 # without checking anything, haseen refuses it.
@@ -173,6 +214,57 @@ assert_eq "and so does its pin" "$second_commit" \
 capture haseen plugin validate "$XDG_CONFIG_HOME/haseen/plugins/alice.clock"
 assert_status "the sibling is back at the commit that validated" 0 "$STATUS"
 
+# install moves the same shared checkout (plan 187): a sibling that stops
+# validating holds it back there too, rather than running unvalidated code
+# under a pin that names another commit.
+capture haseen plugin install alice.load --yes
+assert_status "an install that breaks a sibling fails" 1 "$STATUS"
+assert_contains "and names the sibling" "$OUTPUT" "alice.clock does not validate"
+assert_eq "the plugin being replaced is back as it was" "1.1.0" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+assert_eq "its pin did not move" "$second_commit" \
+    "$(jq -r '.plugins["alice.load"].commit' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
+capture haseen plugin validate "$XDG_CONFIG_HOME/haseen/plugins/alice.clock"
+assert_status "the sibling still validates" 0 "$STATUS"
+assert_eq "no copy is left aside" "" "$(compgen -G "$XDG_CONFIG_HOME/haseen/plugins/.alice.load.*" || true)"
+
+# The same on a fresh install, with nothing to put aside: the new link goes
+# too, rather than staying behind unpinned and, never written as off, on.
+capture haseen plugin uninstall alice.load --yes
+assert_status "a plugin is uninstalled" 0 "$STATUS"
+capture haseen plugin install alice.load --yes
+assert_status "a fresh install that breaks a sibling fails" 1 "$STATUS"
+assert_contains "and names the sibling" "$OUTPUT" "alice.clock does not validate"
+assert_eq "and leaves no link behind" "none" \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/alice.load || -L $XDG_CONFIG_HOME/haseen/plugins/alice.load ]] || echo none)"
+assert_eq "nor a pin" "null" \
+    "$(jq -r '.plugins["alice.load"] // "null"' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
+capture haseen plugin install alice.load --commit "$second_commit" --yes
+assert_status "at the commit the sibling validates at, it installs" 0 "$STATUS"
+# A replace keeps the state the plugin had, even with nothing in shell.json
+# (one installed before installs wrote new ids as off): it is not turned off.
+jq 'del(.plugins["alice.load"])' "$XDG_CONFIG_HOME/haseen/shell.json" >"$SANDBOX/shell.json"
+mv "$SANDBOX/shell.json" "$XDG_CONFIG_HOME/haseen/shell.json"
+capture haseen plugin install alice.load --commit "$second_commit" --yes
+assert_status "a reinstall replaces it" 0 "$STATUS"
+assert_eq "and does not write it as off" "false" \
+    "$(jq -r '.plugins // {} | has("alice.load")' "$XDG_CONFIG_HOME/haseen/shell.json")"
+
+# A replacement that does not validate itself gives the old link back.
+plugin_files "$repo/packages/alice.clock" alice.clock
+rm "$repo/Widget.qml"
+(
+    cd "$repo" || exit 1
+    $GIT add -A
+    $GIT commit -qm "fourth"
+)
+capture haseen plugin install alice.load --yes
+assert_status "a replacement that does not validate fails" 1 "$STATUS"
+assert_eq "and the plugin it was to replace is still installed" "1.1.0" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+capture haseen plugin validate "$XDG_CONFIG_HOME/haseen/plugins/alice.load"
+assert_status "at the commit that validated" 0 "$STATUS"
+
 # --- a second machine ---------------------------------------------------------
 # Same lockfile, empty plugin directory: restore must produce the same commits.
 lock="$(cat "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
@@ -223,6 +315,27 @@ capture haseen plugin restore </dev/null
 assert_contains "restore says what it skipped" "$OUTPUT" "skipping alice.load"
 assert_eq "and leaves the directory as it was" "9.9.9" \
     "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+# update does not delete it either (plan 187): the pin is still there, and
+# upstream has moved on, but only a link into the checkout is update's.
+capture haseen plugin update alice.load --yes
+assert_contains "update says what it skipped" "$OUTPUT" "skipping alice.load"
+assert_eq "and leaves the directory as it was" "9.9.9" \
+    "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
+assert_eq "a real directory, not a link" "dir" \
+    "$([[ -d $XDG_CONFIG_HOME/haseen/plugins/alice.load && ! -L $XDG_CONFIG_HOME/haseen/plugins/alice.load ]] && echo dir)"
+# Nor does lock pin a real directory that happens to be a git checkout with
+# an origin (the user's own plugin repository, or a dotfiles ~/.config).
+(
+    cd "$XDG_CONFIG_HOME/haseen/plugins/me.mine" || exit 1
+    $GIT init -q -b main .
+    $GIT remote add origin "https://example.invalid/me.mine.git"
+    $GIT add -A
+    $GIT commit -qm mine
+)
+capture haseen plugin lock --write --dry-run
+assert_status "a lock --write dry run" 0 "$STATUS"
+assert_contains "pins the installed links" "$OUTPUT" "alice.clock"
+assert_not_contains "but not the user's own checkout" "$OUTPUT" "me.mine"
 capture haseen plugin restore --yes
 assert_eq "--yes replaces it with the pinned plugin" "1.1.0" \
     "$(jq -r .version "$XDG_CONFIG_HOME/haseen/plugins/alice.load/manifest.json")"
@@ -258,5 +371,16 @@ assert_eq "and so is the pin" "null" \
     "$(jq -r '.plugins["alice.clock"] // "null"' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
 assert_eq "the other plugin is untouched" 0 \
     "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/alice.load ]] && echo 0 || echo 1)"
+# A link whose target is gone is still installed (plan 187), and is removed
+# with its pin rather than refused as "not installed".
+ln -s "$SANDBOX/moved-away" "$XDG_CONFIG_HOME/haseen/plugins/alice.gone"
+jq '.plugins["alice.gone"] = .plugins["alice.load"]' "$XDG_CONFIG_HOME/haseen/plugins.lock.json" >"$SANDBOX/lock.json"
+mv "$SANDBOX/lock.json" "$XDG_CONFIG_HOME/haseen/plugins.lock.json"
+capture haseen plugin uninstall alice.gone --yes
+assert_status "a dangling link uninstalls" 0 "$STATUS"
+assert_eq "the link is gone" "gone" \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/plugins/alice.gone || -L $XDG_CONFIG_HOME/haseen/plugins/alice.gone ]] || echo gone)"
+assert_eq "and so is its pin" "null" \
+    "$(jq -r '.plugins["alice.gone"] // "null"' "$XDG_CONFIG_HOME/haseen/plugins.lock.json")"
 capture haseen plugin uninstall ../escape --yes
 assert_status "an id that could escape the plugin dir is refused" 1 "$STATUS"

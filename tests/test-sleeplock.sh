@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# haseen:covers bin/haseen-lock-before-sleep
+# haseen:covers bin/haseen-lock-before-sleep share/haseen/systemd/user/haseen-sleep-lock.service
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -19,7 +19,11 @@ stub systemd-inhibit "echo \"inhibit \$*\" >>'$log'; trap 'echo release >>\"$log
 stub haseen "echo \"haseen \$*\" >>'$log'"
 
 HASEEN_LOCK_GRACE=0.1 capture timeout 10 "$REPO/bin/haseen-lock-before-sleep"
-assert_status "one sleep/resume cycle is handled" 0 "$STATUS"
+# The monitor ending is a failure, so Restart=on-failure brings the watch
+# back; exiting 0 left every later sleep unlocked (plan 196).
+assert_status "dbus-monitor ending fails the service" 1 "$STATUS"
+assert_contains "saying the screen is no longer locked before sleep" "$OUTPUT" "dbus-monitor ended"
+assert_contains "the unit restarts it on failure" "$(cat "$HASEEN_PATH/systemd/user/haseen-sleep-lock.service")" "Restart=on-failure"
 calls="$(cat "$log")"
 assert_contains "a delay inhibitor is held while waiting" "$calls" "inhibit --what=sleep --mode=delay"
 assert_contains "the screen is locked when sleep is announced" "$calls" "haseen shell ipc lock lock"
@@ -35,4 +39,13 @@ HASEEN_LOCK_GRACE=0.1 capture timeout 10 "$REPO/bin/haseen-lock-before-sleep"
 assert_contains "a failed lock is reported" "$OUTPUT" "sleeping anyway"
 order="$(grep -o '^inhibit\|^haseen\|^release' "$log" | tr '\n' ' ')"
 assert_eq "and the inhibitor is still released" "inhibit haseen release inhibit release " "$order"
+
+# A shell with no lock plugin answers "unavailable": the sleep goes ahead,
+# and the log says it is unlocked (plan 196).
+: >"$log"
+stub haseen "echo \"haseen \$*\" >>'$log'; echo unavailable"
+HASEEN_LOCK_GRACE=0.1 capture timeout 10 "$REPO/bin/haseen-lock-before-sleep"
+assert_contains "no lock plugin is reported" "$OUTPUT" "no plugin provides the lock"
+order="$(grep -o '^inhibit\|^haseen\|^release' "$log" | tr '\n' ' ')"
+assert_eq "and the inhibitor is released all the same" "inhibit haseen release inhibit release " "$order"
 

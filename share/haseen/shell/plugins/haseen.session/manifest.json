@@ -19,7 +19,7 @@
     "bootEntries": {
       "type": "string",
       "default": "auto",
-      "description": "Other installed systems to offer (one row each, reboots into it once): \"auto\" hides firmware and removable entries, false hides them all, or a list of Boot#### ids or labels from 'haseen boot list'"
+      "description": "Other installed systems to offer (one row each, reboots into it once): \"auto\" hides firmware and removable entries, false (or none) hides them all, or a comma-separated list of Boot#### ids or labels from 'haseen boot list'"
     },
     "debugIpc": {
       "type": "boolean",

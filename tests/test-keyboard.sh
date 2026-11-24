@@ -291,12 +291,30 @@ ShellRoot {
             width: widget.implicitWidth,
             text: widget.text,
             main: Keyboard.mainKeyboard,
+            idInks: shellRoot.idInks(panel.item),
             layouts: Keyboard.layouts.length,
             index: Keyboard.index,
             shown: osd.shown,
             card: osd.card,
             locks: osd._locks
         };
+    }
+
+    // The list's xkb-id column (each row's small monospace Text): whether
+    // it draws the subtle ink of the row's surface.
+    function idInks(item: var): var {
+        if (!item)
+            return null;
+        const out = [];
+        const walk = it => {
+            for (const child of it.children) {
+                if (child.font !== undefined && child.font.family === Theme.fontMono && child.font.pixelSize === Theme.font.bodySmall)
+                    out.push(String(child.color) === String(Theme.subtle(Theme.surface)));
+                walk(child);
+            }
+        };
+        walk(item);
+        return out;
     }
 
     function swap(name: string): void {
@@ -312,6 +330,23 @@ ShellRoot {
             id: widget
             pluginId: "haseen.kblayout"
             height: 28
+        }
+    }
+
+    // The list itself, only where a run asks for it: opening it reads the
+    // devices once more, which the other runs count.
+    FloatingWindow {
+        implicitWidth: 300
+        implicitHeight: 200
+        visible: panel.active
+
+        Loader {
+            id: panel
+
+            active: Quickshell.env("KBL_PANEL") === "1"
+            sourceComponent: Kbl.Panel {
+                pluginId: "haseen.kblayout"
+            }
         }
     }
 
@@ -400,7 +435,7 @@ ShellRoot {
 }
 QML
         capture env QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_NO_XDG_DESKTOP_PORTAL=1 \
-            OSD_SETTINGS="$3" timeout 60 "$QS_BIN" -p "$harness"
+            OSD_SETTINGS="$3" KBL_PANEL="${4:-0}" timeout 60 "$QS_BIN" -p "$harness"
         RESULT="$(sed -n 's/^.*RESULT //p' <<<"$OUTPUT" | head -1)"
         HYPRCTL="$(cat "$SANDBOX/hyprctl.log" 2>/dev/null || true)"
         QSLOG="$(cat "$SANDBOX/qs.log" 2>/dev/null || true)"
@@ -439,8 +474,13 @@ QML
     assert_eq "lock keys off: no flag, so the binds start nothing" "off" "$(cat "$SANDBOX/flag-state" 2>/dev/null)"
 
     # Three layouts: a right click opens the list.
-    kb_run three devices-three.json '{"layout": false}'
+    kb_run three devices-three.json '{"layout": false}' 1
     assert_status "the harness completes with three layouts" 0 "$STATUS"
+    # Plan 121 dropped the row property the id column's colour read, so it
+    # drew Qt's default black on the dark surface and logged a TypeError
+    # (plan 197).
+    assert_eq "the list: each xkb-id draws in the subtle ink of its row" '[true,true,true]' "$(s 0 .idInks)"
+    assert_not_contains "the list logs no colour errors" "$OUTPUT" "Cannot read property 'r'"
     assert_eq "three layouts: the active one is the Arabic variant" '"AR"' "$(s 0 .text)"
     assert_contains "three layouts: a right click opens the list" "$QSLOG" "call panel toggle haseen.kblayout"
     assert_eq "layout kind off: a switch shows no OSD" "false" "$(s 1 .shown)"

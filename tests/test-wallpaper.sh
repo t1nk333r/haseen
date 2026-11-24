@@ -145,3 +145,72 @@ rendered="$XDG_STATE_HOME/haseen/current/theme"
 assert_eq "the shell tokens come from the wallpaper" "$(jq -r .background "$rendered/shell.json")" \
     "$(sed -n 's/^background = "\(.*\)"/\1/p' "$colors")"
 assert_eq "the terminal config was rendered too" 0 "$([[ -s $rendered/foot.ini ]] && echo 0 || echo 1)"
+
+# A wallpaper with another extension replaces the theme's background: the
+# link of the earlier run goes, and theme set shows the new picture, not the
+# old one in the new colours (plan 194). A picture of the user's own in the
+# folder stays.
+bgdir="$XDG_CONFIG_HOME/haseen/backgrounds/wallpaper"
+cp "$wall" "$bgdir/aaa-mine.png"
+capture env HASEEN_THEME_HEADLESS=1 haseen theme wallpaper "$wall"
+assert_status "a png wallpaper applies" 0 "$STATUS"
+assert_eq "it is the background shown" "$wall" "$(readlink -f "$XDG_STATE_HOME/haseen/current/background")"
+cp "$other" "$SANDBOX/other.jpg"
+capture env HASEEN_THEME_HEADLESS=1 haseen theme wallpaper "$SANDBOX/other.jpg"
+assert_status "a jpg wallpaper applies" 0 "$STATUS"
+assert_eq "the png link of the earlier run is gone, the user's picture kept" "aaa-mine.png wallpaper.jpg" \
+    "$(cd "$bgdir" && command ls -A | LC_ALL=C sort | paste -sd' ')"
+assert_eq "and the new picture is the background shown" "$SANDBOX/other.jpg" \
+    "$(readlink -f "$XDG_STATE_HOME/haseen/current/background")"
+assert_eq "no lock file lands in the theme" 1 "$([[ -e $theme_dir/.lock ]] && echo 0 || echo 1)"
+# The theme is current and shows the user's own picture (haseen theme bg):
+# a new wallpaper still replaces it, though theme set records what is shown.
+ln -sfn "$bgdir/aaa-mine.png" "$XDG_STATE_HOME/haseen/current/background"
+capture env HASEEN_THEME_HEADLESS=1 haseen theme wallpaper "$wall"
+assert_status "a wallpaper over the user's picture applies" 0 "$STATUS"
+assert_eq "and the new picture is shown, not the user's" "$wall" \
+    "$(readlink -f "$XDG_STATE_HOME/haseen/current/background")"
+
+# A path without an extension is refused before colors.toml is touched.
+mkdir -p "$SANDBOX/pics.d"
+cp "$other" "$SANDBOX/pics.d/sunset"
+before="$(stat -c %Y.%i "$colors")"
+capture haseen theme wallpaper "$SANDBOX/pics.d/sunset" --no-apply
+assert_status "an image without an extension is refused" 1 "$STATUS"
+assert_eq "and the theme is left alone" "$before" "$(stat -c %Y.%i "$colors")"
+
+# --name never replaces a theme haseen theme wallpaper did not write: the
+# user's own, an installed one, or a stock theme's name (plan 194).
+mine="$XDG_CONFIG_HOME/haseen/themes/nord-mine"
+mkdir -p "$mine"
+printf 'background = "%s"\nforeground = "%s"\n' "#2e3440" "#d8dee9" >"$mine/colors.toml"
+capture haseen theme wallpaper "$wall" --name nord-mine --no-apply
+assert_status "a theme of the user's own is refused" 1 "$STATUS"
+assert_contains "and the refusal says why" "$OUTPUT" "did not write"
+assert_eq "its colors.toml is untouched" 'background = "#2e3440"' "$(head -n 1 "$mine/colors.toml")"
+assert_eq "and no lock file was left in it" "colors.toml" "$(command ls -A "$mine")"
+capture haseen theme wallpaper "$wall" --name tokyo-night --no-apply
+assert_status "a stock theme's name is refused" 1 "$STATUS"
+assert_eq "and no overlay of it was written" 1 \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/themes/tokyo-night ]] && echo 0 || echo 1)"
+capture haseen theme wallpaper "$wall" --name tokyo-night --dry-run
+assert_status "a dry run refuses it too" 1 "$STATUS"
+# A picture of the user's own under the link's name is never replaced by the
+# link, and nothing is written for the theme (plan 194, review).
+mkdir -p "$XDG_CONFIG_HOME/haseen/backgrounds/mypic"
+cp "$other" "$XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png"
+capture haseen theme wallpaper "$wall" --name mypic --no-apply
+assert_status "a picture of the user's under the link's name is refused" 1 "$STATUS"
+assert_contains "and the refusal names it" "$OUTPUT" "is a picture of yours"
+assert_eq "the picture is untouched" 0 \
+    "$([[ ! -L $XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png ]] &&
+        cmp -s "$other" "$XDG_CONFIG_HOME/haseen/backgrounds/mypic/mypic.png" && echo 0 || echo 1)"
+assert_eq "and no theme was written" 1 \
+    "$([[ -e $XDG_CONFIG_HOME/haseen/themes/mypic ]] && echo 0 || echo 1)"
+# What a failed run of an older version left (the directory and its .lock)
+# is this command's own.
+mkdir -p "$XDG_CONFIG_HOME/haseen/themes/leftover"
+: >"$XDG_CONFIG_HOME/haseen/themes/leftover/.lock"
+capture haseen theme wallpaper "$wall" --name leftover --no-apply
+assert_status "a failed earlier run's directory is reused" 0 "$STATUS"
+assert_eq "and its stale lock file goes" "colors.toml" "$(command ls -A "$XDG_CONFIG_HOME/haseen/themes/leftover")"

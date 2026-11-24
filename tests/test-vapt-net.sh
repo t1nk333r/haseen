@@ -96,6 +96,21 @@ capture haseen-vapt-net-http-server /usr/share/doc/nmap 8080 --dry-run
 assert_status 'explicit directory preview' 0 "$STATUS"
 capture haseen-vapt-net-http-server --dry-run
 assert_status 'blank directory no implicit serving' 1 "$STATUS"
+# DIR as typed in a shell: relative to the working directory, or under ~
+# (a prompt does not expand it). The fixture sysroot mirrors both host paths
+# (plan 195).
+relative_cwd="$SANDBOX/cwd"
+mkdir -p "$relative_cwd" "$ROOT$relative_cwd/www" "$ROOT$HOME/www"
+pushd "$relative_cwd" >/dev/null || exit
+for operand in www ./www . \~/www; do
+    capture haseen-vapt-net-http-server "$operand" 8080 --dry-run
+    assert_status "relative directory '$operand' is resolved, not refused" 0 "$STATUS"
+    assert_not_contains "relative directory '$operand' needs no absolute path" "$OUTPUT" 'must be absolute'
+done
+capture haseen-vapt-net-http-server ../cwd/www 8080 --dry-run
+assert_status 'a .. operand is still refused' 1 "$STATUS"
+assert_contains 'the refusal names the rule' "$OUTPUT" 'path must be absolute, without ..'
+popd >/dev/null || exit
 capture haseen-vapt-net-file-server --file /usr/share/wordlists/sample.txt 8080 --dry-run
 assert_status 'owned single-file preview' 0 "$STATUS"
 capture haseen-vapt-net-file-server --file /usr/share/wordlists 8080 --dry-run
@@ -195,6 +210,34 @@ assert accepted_hosts('192.0.2.7')=={'localhost','192.0.2.7'} and accepted_hosts
 print('confined directory and fixed single-file endpoint passed')
 PY
 assert_status 'actual confined HTTP handler loopback exercise' 0 "$STATUS"
+# A helper restarted on the same port right after a download binds, though the
+# server's side of that connection is in TIME_WAIT; a port another socket
+# still listens on is still refused (plan 195).
+capture python3 -B - "$VAPT_LAYER" "$ROOT" <<'PY'
+import functools,os,socket,sys,threading
+sys.path.insert(0,sys.argv[1]);from workflow_actions import ConfinedHandler,LiteralHTTPServer
+filefd=os.open(sys.argv[2]+'/usr/share/wordlists/sample.txt',os.O_RDONLY)
+handler=functools.partial(ConfinedHandler,root_fd=None,file_fd=filefd)
+server=LiteralHTTPServer(('127.0.0.1',0),handler);port=server.server_port
+thread=threading.Thread(target=server.serve_forever);thread.start()
+try:
+    try:
+        LiteralHTTPServer(('127.0.0.1',port),handler).server_close();raise SystemExit('bound over a listening helper')
+    except OSError:pass
+    client=socket.create_connection(('127.0.0.1',port),timeout=3)
+    client.sendall(b'GET /file HTTP/1.0\r\n\r\n')
+    # Read to EOF first: the server closes first, so TIME_WAIT is on its port.
+    while client.recv(4096):pass
+    client.close()
+finally:
+    server.shutdown();thread.join();server.server_close()
+try:LiteralHTTPServer(('127.0.0.1',port),handler).server_close()
+except OSError as error:raise SystemExit('restart refused: '+str(error))
+finally:os.close(filefd)
+print('restart on the same port passed')
+PY
+assert_status 'a helper restarts on the port of its last download' 0 "$STATUS"
+assert_contains 'restart check ran' "$OUTPUT" 'restart on the same port passed'
 mkdir -p "$ROOT/certificates"
 /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -keyout "$ROOT/certificates/key.pem" -out "$ROOT/certificates/ca.pem" \
     -subj /CN=local-fixture -days 1 -addext basicConstraints=critical,CA:TRUE >/dev/null 2>&1
@@ -205,6 +248,13 @@ assert_eq 'genuine extension establishes CA' true "$(jq '.certificate.isCa' <<<"
 fingerprint="$(jq -r '.certificate.sha256' <<<"$OUTPUT")"
 assert_eq 'full SHA-256 fingerprint length' 64 "${#fingerprint}"
 assert_not_contains 'no PEM content in JSON' "$OUTPUT" 'BEGIN CERTIFICATE'
+mkdir -p "$ROOT$relative_cwd"
+cp "$ROOT/certificates/ca.pem" "$ROOT$relative_cwd/ca.pem"
+pushd "$relative_cwd" >/dev/null || exit
+capture haseen-vapt-net-proxy-ca inspect ca.pem --json --dry-run
+assert_status 'a relative CERT is read from the working directory' 0 "$STATUS"
+assert_eq 'a relative CERT is the same certificate' "$fingerprint" "$(jq -r '.certificate.sha256' <<<"$OUTPUT")"
+popd >/dev/null || exit
 capture haseen-vapt-net-proxy-ca inspect /certificates/key.pem --json
 assert_status 'private-key refusal' 1 "$STATUS"
 assert_eq 'private-key explicit classification' refused "$(jq -r '.state' <<<"$OUTPUT")"

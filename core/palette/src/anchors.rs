@@ -7,8 +7,9 @@ use crate::color::{self, OkLch};
 use crate::gomath;
 use crate::modes::Palette;
 
-/// Foreground text and the shell's text on `selection` are body text (WCAG
-/// AA, 4.5:1); the accent marks focus rings and icons (WCAG 1.4.11, 3:1).
+/// Foreground text, on the background and on `selection` (the terminals'
+/// selected text, yazi's hovered row), is body text (WCAG AA, 4.5:1); the
+/// accent marks focus rings and icons (WCAG 1.4.11, 3:1).
 pub const MIN_TEXT_CONTRAST: f64 = 4.5;
 pub const MIN_ACCENT_CONTRAST: f64 = 3.0;
 
@@ -203,6 +204,22 @@ mod go_tests {
                     assert!(err.is_none(), "{what}: {err:?}");
                     let r = r.unwrap();
                     assert_readable(&r.palette, &r.selection, &what);
+                    // What the terminals draw: selection_foreground on
+                    // selection_background, as colors.toml writes them.
+                    let toml = r.colors_toml();
+                    let key = |k: &str| -> String {
+                        let line = toml
+                            .lines()
+                            .find(|l| l.starts_with(&format!("{k} = ")))
+                            .unwrap_or_else(|| panic!("{what}: no {k}"));
+                        line.split('"').nth(1).unwrap().to_string()
+                    };
+                    let (sf, sb) = (key("selection_foreground"), key("selection_background"));
+                    let c = color::contrast_ratio(&sf, &sb);
+                    assert!(
+                        c >= MIN_TEXT_CONTRAST,
+                        "{what}: selection_foreground {sf} on selection_background {sb}: {c:.2}:1"
+                    );
                     let raw = load_cached(&cache, &cache_key(&r.seed, mode, light))
                         .expect("a cache entry");
                     assert_eq!(

@@ -90,10 +90,13 @@ printf '%s\n' "${options[@]}" | jq -R . | jq -s \
     }' >"$dir/request.json"
 
 shell_pid="$(haseen shell ipc menu select "$dir/request.json")" || die "the shell did not answer (haseen shell ipc menu select)"
+# The shell answers its PID once a menu has the list, "unavailable" when no
+# menu plugin is on. Without a PID nothing would ever end the wait.
 shell_pid=${shell_pid//[^0-9]/}
+[[ -n $shell_pid ]] || die "no menu to show the list in (haseen plugin enable haseen.menu)"
 
 until read -r -t 2 -u 3 _; do
-    if [[ -n $shell_pid ]] && ! kill -0 "$shell_pid" 2>/dev/null; then
+    if ! kill -0 "$shell_pid" 2>/dev/null; then
         die "the shell went away before anything was chosen"
     fi
 done

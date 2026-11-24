@@ -62,6 +62,11 @@ Scope {
     // Paginated fetches in flight (Model.mergeTaskPage); null when none runs.
     property var listFetch: null
     property var barCountFetch: null
+    // The mode the count in flight was asked for, and a count asked for
+    // while it runs (a mode changed meanwhile): its answer is dropped and
+    // the count asked again once it ends, as refreshPending does for the list.
+    property string barCountFetchMode: ""
+    property bool barCountPending: false
 
     property int barCountValue: 0
     property bool barCountTruncated: false
@@ -69,7 +74,13 @@ Scope {
     // Tasks being closed: struck through for a moment, then removed.
     property var completingTaskIds: []
     property var pendingRemovalIds: []
+    // Close, edit and delete requests, sent one at a time in order
+    // ({verb, taskId, method, path, body}): a Process asked to run while it
+    // runs does nothing, so a second action sent straight to it was lost.
     property var actionQueue: []
+    // An edit or a delete went through: the list is fetched again once the
+    // queue is empty, so a fetch never brings back a task still queued.
+    property bool refreshAfterActions: false
     property bool quickAddSubmitting: false
     // Bumped when a quick add went through, so the panel can clear its field.
     property int quickAddDone: 0
@@ -168,6 +179,7 @@ Scope {
         barCountProc.running = false;
         root.listFetch = null;
         root.barCountFetch = null;
+        root.barCountPending = false;
         root.loading = false;
         root.refreshPending = false;
         root.listTruncated = false;
@@ -321,17 +333,28 @@ Scope {
             root.barCountTruncated = root.listTruncated;
             return;
         }
-        if (barCountProc.running)
+        if (barCountProc.running) {
+            root.barCountPending = true;
             return;
+        }
+        root.barCountPending = false;
+        root.barCountFetchMode = root.barCountMode;
         root.barCountFetch = Model.emptyFetch();
         root.fetchBarCountPage("");
     }
 
     function fetchBarCountPage(cursor: string): void {
-        root.api(barCountProc, "GET", Model.taskListPath(root.barCountMode, root.filterQuery, cursor), null);
+        root.api(barCountProc, "GET", Model.taskListPath(root.barCountFetchMode, root.filterQuery, cursor), null);
     }
 
+    // After each page, on a deferred tick; a count asked for meanwhile wins
+    // over the next page.
     function continueBarCount(): void {
+        if (root.barCountPending) {
+            root.barCountFetch = null;
+            root.refreshBarCount();
+            return;
+        }
         if (root.barCountFetch === null || root.barCountFetch.cursor === null)
             return;
         root.fetchBarCountPage(root.barCountFetch.cursor);
@@ -354,6 +377,13 @@ Scope {
             page = Model.parseTaskPage(response.body);
         } catch (e) {
             root.barCountFetch = null;
+            return;
+        }
+        // Counted for a mode no longer shown: dropped, and continueBarCount
+        // asks for the current one.
+        if (root.barCountFetchMode !== root.barCountMode) {
+            root.barCountFetch = null;
+            root.barCountPending = true;
             return;
         }
         const next = Model.mergeTaskCountPage(root.barCountFetch, page);
@@ -384,8 +414,13 @@ Scope {
             return;
         root.completingTaskIds = root.completingTaskIds.concat([taskId]);
         root.pendingRemovalIds = root.pendingRemovalIds.concat([taskId]);
-        root.actionQueue = root.actionQueue.concat([taskId]);
-        root.processActionQueue();
+        root.queueAction({
+            verb: "close",
+            taskId: taskId,
+            method: "POST",
+            path: "tasks/" + encodeURIComponent(taskId) + "/close",
+            body: null
+        });
         completionRemovalTimer.restart();
     }
 
@@ -402,13 +437,25 @@ Scope {
         root.refresh();
     }
 
+    function queueAction(action: var): void {
+        root.actionQueue = root.actionQueue.concat([action]);
+        root.processActionQueue();
+    }
+
     function processActionQueue(): void {
-        if (actionProc.running || root.actionQueue.length === 0)
+        if (actionProc.running)
             return;
-        const taskId = root.actionQueue[0];
+        if (root.actionQueue.length === 0) {
+            if (root.refreshAfterActions) {
+                root.refreshAfterActions = false;
+                root.refresh();
+            }
+            return;
+        }
+        const action = root.actionQueue[0];
         root.actionQueue = root.actionQueue.slice(1);
-        actionProc.pendingTaskId = taskId;
-        root.api(actionProc, "POST", "tasks/" + encodeURIComponent(taskId) + "/close", null);
+        actionProc.pending = action;
+        root.api(actionProc, action.method, action.path, action.body);
     }
 
     function editTask(taskId: string, content: string): void {
@@ -419,14 +466,28 @@ Scope {
         const next = root.tasks.slice();
         next[index] = Object.assign({}, next[index], { content: text });
         root.tasks = next;
-        root.api(editProc, "POST", "tasks/" + encodeURIComponent(taskId), { content: text });
+        root.queueAction({
+            verb: "edit",
+            taskId: taskId,
+            method: "POST",
+            path: "tasks/" + encodeURIComponent(taskId),
+            body: {
+                content: text
+            }
+        });
     }
 
     function deleteTask(taskId: string): void {
         if (taskId === "")
             return;
         root.tasks = root.tasks.filter(t => !t || t.id !== taskId);
-        root.api(deleteProc, "DELETE", "tasks/" + encodeURIComponent(taskId), null);
+        root.queueAction({
+            verb: "delete",
+            taskId: taskId,
+            method: "DELETE",
+            path: "tasks/" + encodeURIComponent(taskId),
+            body: null
+        });
     }
 
     function openTask(task: var): void {
@@ -558,8 +619,8 @@ Scope {
     Process {
         id: actionProc
 
-        // The task this run closes, so a failure undoes exactly that one.
-        property string pendingTaskId: ""
+        // The action this run sends, so a failed close undoes exactly that one.
+        property var pending: null
 
         stdout: StdioCollector {
             id: actionOut
@@ -571,50 +632,16 @@ Scope {
         }
         onExited: code => {
             const failed = root.responseFailure(Model.parseCurlResponse(String(actionOut.text || "")), code, String(actionErr.text || ""));
+            const action = actionProc.pending || {};
             if (failed !== null) {
                 root.failure = failed;
-                root.undoCompleting(actionProc.pendingTaskId);
+                if (action.verb === "close")
+                    root.undoCompleting(action.taskId);
                 root.refresh();
+            } else if (action.verb === "edit" || action.verb === "delete") {
+                root.refreshAfterActions = true;
             }
             Qt.callLater(root.processActionQueue);
-        }
-    }
-
-    Process {
-        id: deleteProc
-
-        stdout: StdioCollector {
-            id: deleteOut
-            waitForEnd: true
-        }
-        stderr: StdioCollector {
-            id: deleteErr
-            waitForEnd: true
-        }
-        onExited: code => {
-            const failed = root.responseFailure(Model.parseCurlResponse(String(deleteOut.text || "")), code, String(deleteErr.text || ""));
-            if (failed !== null)
-                root.failure = failed;
-            root.refresh();
-        }
-    }
-
-    Process {
-        id: editProc
-
-        stdout: StdioCollector {
-            id: editOut
-            waitForEnd: true
-        }
-        stderr: StdioCollector {
-            id: editErr
-            waitForEnd: true
-        }
-        onExited: code => {
-            const failed = root.responseFailure(Model.parseCurlResponse(String(editOut.text || "")), code, String(editErr.text || ""));
-            if (failed !== null)
-                root.failure = failed;
-            root.refresh();
         }
     }
 
@@ -629,7 +656,8 @@ Scope {
     }
 
     // Upstream's cadence: every 20 minutes with the panel closed (the bar
-    // count), every 2 minutes while it is open; actions refresh at once.
+    // count), every 2 minutes while it is open; actions refresh once they
+    // have gone through.
     // haseen:sample
     Timer {
         id: backgroundRefreshTimer

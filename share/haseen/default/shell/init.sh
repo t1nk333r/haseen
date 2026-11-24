@@ -88,9 +88,31 @@ fi
 
 # fzf: Ctrl-R history, Ctrl-T files, Alt-C directories. Only interactive
 # shells can bind keys.
+#
+# The include is the rc's last line, so a Ctrl-R the rc bound above it (atuin,
+# mcfly, a binding of your own) would be bound over. It stays: fzf then binds
+# only Ctrl-T and Alt-C, through its own switch, an empty FZF_CTRL_R_COMMAND.
+# Ctrl-R still on the shell's own history search, or on fzf's from an earlier
+# source, is not a choice to keep.
 if command -v fzf >/dev/null 2>&1; then
     case $- in
     *i*)
+        _haseen_ctrl_r=
+        if [ -z "${FZF_CTRL_R_COMMAND+x}" ]; then
+            if [ "$_haseen_shell" = zsh ]; then
+                case "$(bindkey '^R' 2>/dev/null)" in
+                *' 'history-incremental-search-backward | *' 'redisplay | *' 'undefined-key | *' 'fzf-history-widget | '') ;;
+                *) _haseen_ctrl_r=keep ;;
+                esac
+            else
+                # `bind -x` and macro bindings drop out of `bind -p`, so only
+                # readline's default and fzf's own count as free.
+                bind -p 2>/dev/null | grep -qxF '"\C-r": reverse-search-history' ||
+                    bind -X 2>/dev/null | grep -qF '__fzf_history__' ||
+                    _haseen_ctrl_r=keep
+            fi
+        fi
+        [ -n "$_haseen_ctrl_r" ] && FZF_CTRL_R_COMMAND=
         if [ -f "/usr/share/fzf/key-bindings.$_haseen_shell" ]; then
             # shellcheck disable=SC1090  # the distro's file, named per shell
             . "/usr/share/fzf/key-bindings.$_haseen_shell"
@@ -101,13 +123,16 @@ if command -v fzf >/dev/null 2>&1; then
             # fzf 0.48+ generates them itself when the distro ships no files.
             eval "$(fzf "--$_haseen_shell" 2>/dev/null)" || true
         fi
+        [ -n "$_haseen_ctrl_r" ] && unset FZF_CTRL_R_COMMAND
+        unset _haseen_ctrl_r
         ;;
     esac
 fi
 
 # bat as the man pager: colour and search inside man pages. -c makes groff
-# emit the overstrike bat's man syntax expects.
-if command -v bat >/dev/null 2>&1; then
+# emit the overstrike bat's man syntax expects. A MANPAGER the rc (or the
+# environment) already set is the user's and stays, like their aliases.
+if command -v bat >/dev/null 2>&1 && [ -z "${MANPAGER:-}" ]; then
     export MANPAGER="sh -c 'col -bx | bat -l man -p'"
     export MANROFFOPT="-c"
 fi

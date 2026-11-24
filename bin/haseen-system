@@ -13,6 +13,7 @@ Usage: haseen system <lock|suspend|hibernate|logout|reboot|shutdown> [--dry-run]
        haseen system hibernate --available
 
 lock      the shell's lock screen (IPC lock lock), else loginctl lock-session
+          (no shell, or no plugin in it provides the lock)
 suspend   systemctl suspend
 hibernate systemctl hibernate; --available exits 0 only when hibernation is
           set up (same check as haseen hibernation status)
@@ -124,7 +125,10 @@ lock)
     if $DRY_RUN; then
         run haseen shell ipc lock lock
     else
-        haseen shell ipc lock lock 2>/dev/null || loginctl lock-session
+        # The shell answers "unavailable" when no plugin provides the lock
+        # (haseen.lock off, failed to load, not loaded yet): logind then.
+        answer="$(haseen shell ipc lock lock 2>/dev/null)" || answer=unavailable
+        [[ $answer != unavailable ]] || loginctl lock-session
     fi
     ;;
 suspend) run systemctl suspend ;;

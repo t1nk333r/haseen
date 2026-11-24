@@ -84,6 +84,22 @@ assert_eq 'transition state retained' transitioning "$(jq -r '.services[] | sele
 assert_eq 'failure state retained' failed "$(jq -r '.services[] | select(.id=="postgresql") | .state' <<<"$OUTPUT")"
 assert_eq 'unknown state retained' unknown "$(jq -r '.services[] | select(.id=="apache") | .state' <<<"$OUTPUT")"
 assert_eq 'raw manager substate retained' start "$(jq -r '.services[] | select(.id=="ssh") | .subState' <<<"$OUTPUT")"
+# A verified unit in maintenance or refreshing reads as state unknown, and is
+# still one the service commands act on, not a silent exit 1 (plan 195).
+for active in maintenance refreshing; do
+    python3 - "$ROOT/var/lib/haseen/vapt/services.json" "$active" <<'PY'
+import json,sys
+p=sys.argv[1];r=json.load(open(p));r['sshd.service']['ActiveState']=sys.argv[2];r['sshd.service']['SubState']='dead'
+with open(p,'w') as f:json.dump(r,f)
+PY
+    capture haseen-vapt-service-list --json
+    assert_eq "$active unit reads as unknown" unknown "$(jq -r '.services[] | select(.id=="ssh") | .state' <<<"$OUTPUT")"
+    rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
+    actions_api service stop ssh sshd.service /usr/lib/systemd/system/sshd.service
+    assert_status "stop of a verified $active unit proceeds" 0 "$STATUS"
+    assert_eq "stop of a verified $active unit runs the service manager" 'stop -- sshd.service' "$(vapt_calls owned-systemctl)"
+    rm -f "$CALLS/action-root" "$CALLS/owned-systemctl"
+done
 python3 - "$ROOT/var/lib/haseen/vapt/installed.json" <<'PY'
 import json,sys
 p=sys.argv[1];r=json.load(open(p));next(x for x in r if x['name']=='nginx')['url']='https://foreign.invalid/'

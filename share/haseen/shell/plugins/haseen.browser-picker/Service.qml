@@ -58,6 +58,11 @@ Scope {
     property var targetScreen: null
     // The last argv answered, for the test hook.
     property var lastAnswer: null
+    // Request files not read yet. A running Process restarts only once after
+    // it exits, with whatever command it was last given, so of several links
+    // that arrive while one is being read all but the last were dropped,
+    // their callers left waiting. They wait here instead (plan 198).
+    property var requestQueue: []
 
     function focusedScreen(): var {
         const mon = Hyprland.focusedMonitor;
@@ -69,6 +74,16 @@ Scope {
     }
 
     function pick(request: string): void {
+        requestQueue = requestQueue.concat([request]);
+        if (!requestReader.running)
+            readNextRequest();
+    }
+
+    function readNextRequest(): void {
+        if (requestQueue.length === 0)
+            return;
+        const request = requestQueue[0];
+        requestQueue = requestQueue.slice(1);
         // A second request while one is open answers the first "nothing
         // chosen", or its caller would wait on a FIFO nobody writes.
         if (doneFile !== "")
@@ -205,6 +220,7 @@ Scope {
         onExited: code => {
             if (code === 0)
                 root.startRequest(requestText.text);
+            root.readNextRequest();
         }
     }
 

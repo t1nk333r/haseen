@@ -75,6 +75,19 @@ greeter_command() {
     esac
 }
 
+# greeter_trusted — greetd runs haseen-greeter as `greeter`, the account
+# every user's password is typed into, so the command, the libraries it
+# sources and the greeter shell it starts must be files only root can change
+# (root_trusted_exec, root_trusted_dir): an installed tree, never a checkout
+# or another tree a user owns, which the greeter may not even be able to
+# reach (plan 196). Prints why not.
+greeter_trusted() {
+    local bin
+    bin="$(readlink -f "$HASEEN_PATH/../../bin")"
+    root_trusted_exec "$bin/haseen-greeter" &&
+        root_trusted_dir "$bin/../share/haseen" "$bin/../share/haseen/lib" "$bin/../share/haseen/shell/greeter"
+}
+
 # greetd_config [CHOICE] [AUTOLOGIN_USER] — the whole /etc/greetd/config.toml.
 greetd_config() {
     local autologin="${2-$(greeter_autologin_user)}"

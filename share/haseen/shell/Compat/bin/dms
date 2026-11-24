@@ -74,7 +74,8 @@ toast() {
     *) fail "ipc toast $fn is not supported" ;;
     esac
     [[ -n ${2:-} ]] || fail "ipc toast $fn: no message specified"
-    local args=(notify-send --app-name=haseen --urgency="$urgency" "$2")
+    # "--": a message that starts with "-" is text, not an option (plan 196).
+    local args=(notify-send --app-name=haseen --urgency="$urgency" -- "$2")
     if [[ $fn == *With && -n ${3:-} ]]; then args+=("$3"); fi
     exec "${args[@]}"
 }

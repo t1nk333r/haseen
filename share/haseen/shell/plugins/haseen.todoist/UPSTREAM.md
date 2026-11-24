@@ -38,6 +38,10 @@ aryan-techie. `LICENSE` in this directory is the upstream licence, unchanged.
   10 s limit, the status classes and wording of `Model.statusMessage`, the
   paging (limit 200, `next_cursor`, at most 10 pages, `+` on a capped count),
   401/403 dimming the mark until the next good answer. New: `--proto =https`.
+  Close, edit and delete go to the server one at a time, in order, through
+  one queue, so a second edit or delete sent while the first runs is not
+  lost. The bar count drops an answer fetched for a mode changed meanwhile
+  and asks for the new mode (plan 193).
 - **Theme.** Theme tokens and the shared `Pill` instead of `qs.Ui` and
   `qs.Commons`. Todoist's fixed priority colours (`#eb5757`, `#f2b84b`,
   `#4a90d2`) become the theme's urgent, warning and accent roles

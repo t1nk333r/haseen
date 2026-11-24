@@ -220,7 +220,11 @@ capture "$REPO/install.sh" --dry-run </dev/null
 assert_status "fresh install dry run" 0 "$STATUS"
 assert_contains "a fresh HOME plans the default theme" "$OUTPUT" "DRYRUN: write $CUR/theme.name: haseen"
 assert_contains "a fresh HOME seals the migration" "$OUTPUT" "DRYRUN: record migrations $MIGRATION (sealed)"
-assert_not_contains "a fresh HOME runs none" "$OUTPUT" "DRYRUN: run migration"
+# Only the migrations marked `# haseen:seal run` run there: they repair the
+# machine, which a HOME new to haseen says nothing about (plan 186).
+assert_eq "a fresh HOME runs only the system repairs" \
+    "1792605416-seal-omarchy-migrations.sh 1792605417-polkit-faillock.sh" \
+    "$(sed -n 's/^DRYRUN: run migration //p' <<<"$OUTPUT" | xargs)"
 
 haseen_sandbox theme-haseen-install-theme
 old_user greek-noir-akane

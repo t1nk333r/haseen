@@ -220,8 +220,12 @@ far_end "${OUT[background]}"
 end=$REPLY
 clamp foreground "${OUT[background]}" "$MIN_TEXT" "$end"
 clamp accent "${OUT[background]}" "$MIN_ACCENT" "$end"
-# The shell draws foreground text on the selection: pull it toward the
-# background, which the clamped foreground already reads on.
+# yazi's hovered row, btop and neovim draw foreground text on the selection
+# (the shell's own fill is shell.json's 18 % mix since plan 115): pull it
+# toward the background, which the clamped foreground already reads on.
+# Terminals draw selection_foreground (on_secondary_container) on it; that
+# tone sits on the far side of the selection from the background, so the
+# move only adds contrast there (plan 194).
 clamp selection "${OUT[foreground]}" "$MIN_TEXT" "${OUT[background]}"
 OUT[selection_background]="${OUT[selection]}"
 

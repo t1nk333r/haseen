@@ -847,6 +847,24 @@ function afternoon(solarTime, shadowLength) {
   return solarHourAngle(solarTime, angle, true)
 }
 
+// Asr in hours, and whether it is an approximation. The shadow rule needs a
+// noon sun clear of the horizon: where the noon zenith reaches 90 degrees (a
+// polar-circle winter, and every day the nearest-latitude fallback resolves
+// at that edge) tan() wraps negative, and where it nears 90 the hour-angle
+// correction divides by almost nothing, so afternoon() came out before Dhuhr,
+// even before sunrise, or after sunset (plan 197). Where it does not land
+// between earliest (a minute after Dhuhr as shown) and sunset, Asr takes
+// the middle of the Dhuhr-to-sunset span and the day says it is approximate,
+// so Dhuhr < Asr < Maghrib always holds. Everywhere else it is adhan's.
+function asrHours(solarTime, shadowLength, earliest) {
+  var hours = NaN
+  if (Math.abs(solarTime.latitude - solarTime.solar.declination) < 90) {
+    hours = afternoon(solarTime, shadowLength)
+  }
+  if (hours >= earliest && hours < solarTime.sunset) return { hours: hours, approximate: false }
+  return { hours: (solarTime.transit + solarTime.sunset) / 2, approximate: true }
+}
+
 function epochFromHours(year, month, day, hours) {
   if (!isFinite(hours)) return NaN
   var wholeHours = Math.floor(hours)
@@ -1029,7 +1047,9 @@ function prayerTimes(year, month, day, latitude, longitude, params, options) {
   var tomorrowSunrise = epochFromHours(tomorrow.year, tomorrow.month, tomorrow.day, tomorrowSolar.sunrise)
   var dhuhrTime = epochFromHours(year, month, day, solar.transit)
   var school = options && Number(options.school) === 1 ? 2 : 1
-  var asrTime = epochFromHours(year, month, day, afternoon(solar, school))
+  var asr = asrHours(solar, school,
+    solar.transit + (adjustment(params, "dhuhr") - adjustment(params, "asr") + 1) / 60)
+  var asrTime = epochFromHours(year, month, day, asr.hours)
   var night = tomorrowSunrise - sunsetTime
   if (!isFinite(night) || night <= 0) return null
 
@@ -1074,7 +1094,8 @@ function prayerTimes(year, month, day, latitude, longitude, params, options) {
     sunset: sunsetTime,
     maghrib: maghribTime + adjustment(params, "maghrib") * 60000,
     isha: ishaTime + adjustment(params, "isha") * 60000,
-    resolution: resolved.resolution
+    resolution: resolved.resolution,
+    asrApproximate: asr.approximate
   }
   if (!isFinite(result.fajr) || !isFinite(result.sunrise) || !isFinite(result.dhuhr)
       || !isFinite(result.asr) || !isFinite(result.sunset) || !isFinite(result.maghrib)
@@ -1142,7 +1163,7 @@ function dayTimes(config, year, month, day, hijri) {
     Firstthird: roundedTime(firstThird, rounding),
     Lastthird: roundedTime(lastThird, rounding),
     resolution: current.resolution,
-    approximate: current.resolution !== "none"
+    approximate: current.resolution !== "none" || current.asrApproximate
   }
 }
 
