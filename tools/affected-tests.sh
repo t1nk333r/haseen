@@ -10,15 +10,23 @@
 #       path selects what it does goes to stderr unless --quiet.
 #   tools/affected-tests.sh --check
 #       Fails, listing them, on a file that is neither global, exempt nor
-#       covered by a test, on a covers glob or a GLOBAL/EXEMPT entry that matches
-#       no file, on a malformed glob, on a test without a covers line and on a
-#       file name with a control character.
+#       covered by a test, on a covers or scans glob or a GLOBAL/EXEMPT entry
+#       that matches no file, on a malformed glob, on a test without a covers
+#       line, on a test that names a fixture ($FIXTURES/NAME) none of whose
+#       files its covers match, and on a file name with a control character.
 # Both stop with status 2 when git cannot read this checkout (another user's,
 # without safe.directory) or lists no file: never an empty, passing answer.
 #
 # Each tests/test-*.sh names what it exercises in its leading comment block
 # (the lines before its first command), one or more lines of
 #   # haseen:covers GLOB [GLOB...]
+# and, for a test that sweeps a whole tree for a rule (no destructive line
+# names the owner's plugin dirs, every adapted file has a NOTICE.md row), any
+# number of lines of
+#   # haseen:scans GLOB [GLOB...]
+# A scans glob selects its test like a covers glob but vouches for nothing: a
+# file only a scan reaches is still uncovered for --check and rule 6, so one
+# blanket glob cannot hide a file no test exercises (plan 201).
 # A changed path selects, in this order:
 #   0. every test, if its name has a control character (a tab, a newline):
 #      the formats below cannot carry it, so it is never matched, nor skipped;
@@ -28,6 +36,7 @@
 #   4. every test whose covers match it;
 #   5. nothing, if it matches EXEMPT;
 #   6. every test otherwise: a file no test claims is never skipped silently.
+# Every test whose scans match the path runs as well, under 2 to 6 alike.
 # CI runs this selection on pull requests and on every push to main, and the
 # full suite only by hand (.github/workflows/ci.yml, plan 176): a declaration
 # that misses something skips that test until its own files change, so keep
@@ -85,7 +94,7 @@ NOWIDEN=(
     share/haseen/VERSION         # the version string: read, printed, never pinned
 )
 
-usage() { sed -n '2,18s/^# \{0,1\}//p' "$0"; }
+usage() { sed -n '2,19s/^# \{0,1\}//p' "$0"; }
 
 # glob_regex GLOB — sets REGEX to the anchored POSIX ERE for GLOB; fails on
 # bad syntax. (A variable, not output: no subshell per glob.)
@@ -146,21 +155,25 @@ glob_regex() {
     REGEX="^$re\$"
 }
 
-# covers — "TEST<TAB>GLOB" for every glob in a test file's leading comments.
+# covers — "KIND<TAB>TEST<TAB>GLOB" for every covers or scans glob in a test
+# file's leading comments.
 covers() {
     awk 'FNR == 1 { head = 1 }
         head && !/^#/ && !/^[[:space:]]*$/ { head = 0 }
-        head && /^# haseen:covers[[:space:]]/ {
-            sub(/^# haseen:covers[[:space:]]+/, "")
+        head && /^# haseen:(covers|scans)[[:space:]]/ {
+            kind = $2
+            sub(/^haseen:/, "", kind)
+            sub(/^# haseen:(covers|scans)[[:space:]]+/, "")
             n = split($0, g, /[[:space:]]+/)
-            for (i = 1; i <= n; i++) if (g[i] != "") print FILENAME "\t" g[i]
+            for (i = 1; i <= n; i++) if (g[i] != "") print kind "\t" FILENAME "\t" g[i]
         }' tests/test-*.sh
 }
 
 # rules FILE — writes "KIND<TAB>OWNER<TAB>GLOB<TAB>REGEX" lines for GLOBAL,
-# EXEMPT and every covers glob to FILE; prints each malformed glob and fails.
+# EXEMPT and every covers and scans glob to FILE; prints each malformed glob
+# and fails.
 rules() {
-    local g bad=0 test REGEX
+    local g bad=0 kind test REGEX
     {
         for g in "${GLOBAL[@]}"; do
             glob_regex "$g" || { echo "  GLOBAL: malformed glob: $g" >&3; bad=1; continue; }
@@ -174,9 +187,9 @@ rules() {
             glob_regex "$g" || { echo "  NOWIDEN: malformed glob: $g" >&3; bad=1; continue; }
             printf 'nowiden\t-\t%s\t%s\n' "$g" "$REGEX"
         done
-        while IFS=$'\t' read -r test g; do
+        while IFS=$'\t' read -r kind test g; do
             glob_regex "$g" || { echo "  $test: malformed glob: $g" >&3; bad=1; continue; }
-            printf 'covers\t%s\t%s\t%s\n' "$test" "$g" "$REGEX"
+            printf '%s\t%s\t%s\t%s\n' "$kind" "$test" "$g" "$REGEX"
         done < <(covers)
     } 3>&1 >"$1"
     return "$bad"
@@ -267,20 +280,38 @@ check() {
         fail=1
     fi
 
-    awk -F'\t' '$1 == "Z" { print "  " ($2 == "covers" ? $3 : toupper($2)) ": " $4 }' "$tmp/match" >"$tmp/stale"
+    awk -F'\t' '$1 == "Z" { print "  " ($2 == "covers" || $2 == "scans" ? $3 : toupper($2)) ": " $4 }' "$tmp/match" >"$tmp/stale"
     if [[ -s $tmp/stale ]]; then
         echo "affected-tests: globs that match no file (stale declarations):" >&2
         cat "$tmp/stale" >&2
         fail=1
     fi
 
-    # A test file always covers itself.
-    { awk -F'\t' '$1 == "M" { print $2 }' "$tmp/match"; cat "$tmp/tests"; } | sort -u >"$tmp/claimed"
+    # A test file always covers itself. A scans glob claims nothing.
+    { awk -F'\t' '$1 == "M" && $3 != "scans" { print $2 }' "$tmp/match"; cat "$tmp/tests"; } | sort -u >"$tmp/claimed"
     comm -23 "$tmp/paths" "$tmp/claimed" >"$tmp/uncovered"
     if [[ -s $tmp/uncovered ]]; then
         echo "affected-tests: files no test covers and none of GLOBAL, EXEMPT or NOWIDEN lists" >&2
         echo "  (add a '# haseen:covers' glob to the tests that exercise them):" >&2
         sed 's/^/  /' "$tmp/uncovered" >&2
+        fail=1
+    fi
+
+    # A test that names a fixture reads it, so editing the fixture must select
+    # the test: at least one of the fixture's files has to be in the test's own
+    # covers. Names built at run time ($FIXTURES/$fx) are not seen.
+    { grep -oE '(\$\{?FIXTURES\}?"?|tests/fixtures)/[A-Za-z0-9._-]+' tests/test-*.sh || true; } >"$tmp/fxrefs"
+    awk -F'\t' '
+        FILENAME == ARGV[1] { if (split($0, s, "/") >= 3 && s[1] == "tests" && s[2] == "fixtures") fx[s[3]] = 1; next }
+        FILENAME == ARGV[2] { if ($1 == "M" && $3 == "covers" && split($2, s, "/") >= 3 && s[1] == "tests" && s[2] == "fixtures") own[$4 SUBSEP s[3]] = 1; next }
+        {
+            t = $0; sub(/:.*/, "", t)
+            n = $0; sub(/.*\//, "", n)
+            if ((n in fx) && !((t SUBSEP n) in own) && !seen[t SUBSEP n]++) print "  " t ": tests/fixtures/" n
+        }' "$tmp/paths" "$tmp/match" "$tmp/fxrefs" | sort >"$tmp/fxmiss"
+    if [[ -s $tmp/fxmiss ]]; then
+        echo "affected-tests: tests that read a fixture none of their covers name (add it to the test's covers):" >&2
+        cat "$tmp/fxmiss" >&2
         fail=1
     fi
     ((fail == 0)) || return 1
@@ -310,28 +341,30 @@ select_tests() {
         return 2
     }
     # One line per changed path: PATH, G if global, E if exempt, the covering
-    # tests; "-" for none, as read collapses empty tab-separated fields.
+    # tests, N if NOWIDEN, the scanning tests; "-" for none, as read collapses
+    # empty tab-separated fields.
     match "$tmp/changed" "$tmp/rules" | awk -F'\t' '
         FILENAME == ARGV[1] { ch[++n] = $0; next }
         $1 == "M" && $3 == "global" { g[$2] = "G" }
         $1 == "M" && $3 == "exempt" { e[$2] = "E" }
         $1 == "M" && $3 == "nowiden" { w[$2] = "N" }
         $1 == "M" && $3 == "covers" { c[$2] = c[$2] " " $4 }
+        $1 == "M" && $3 == "scans" { s[$2] = s[$2] " " $4 }
         END {
             for (i = 1; i <= n; i++) {
                 p = ch[i]
-                print p "\t" (p in g ? "G" : "-") "\t" (p in e ? "E" : "-") "\t" (p in c ? c[p] : "-") "\t" (p in w ? "N" : "-")
+                print p "\t" (p in g ? "G" : "-") "\t" (p in e ? "E" : "-") "\t" (p in c ? c[p] : "-") "\t" (p in w ? "N" : "-") "\t" (p in s ? s[p] : "-")
             }
         }
     ' "$tmp/changed" - >"$tmp/classified"
 
     local -A selected=()
-    local all=0 why=() t global exempt cov nowiden tests
+    local all=0 why=() t global exempt cov nowiden scan tests scanned also
     while IFS= read -r f; do
         all=1
         why+=("$f: a control character in the name, which no glob can be matched against, every test")
     done <"$tmp/unsafe"
-    while IFS=$'\t' read -r f global exempt cov nowiden; do
+    while IFS=$'\t' read -r f global exempt cov nowiden scan; do
         if [[ $global == G ]]; then
             all=1
             why+=("$f: global, every test")
@@ -341,16 +374,22 @@ select_tests() {
             why+=("$f: read by many tests, depended on by none, no test")
             continue
         fi
-        tests=()
+        tests=() scanned=() also=
         [[ $cov == - ]] || read -ra tests <<<"$cov"
         [[ $f =~ ^tests/test-[^/]*\.sh$ && -f $f ]] && tests+=("$f")
+        # A scan runs its test whatever else the path selects, and decides
+        # nothing: the rules below look only at the covers.
+        [[ $scan == - ]] || read -ra scanned <<<"$scan"
+        for t in "${scanned[@]}"; do selected[$t]=1; done
+        ((${#scanned[@]} == 0)) ||
+            also="; scanned by $(printf '%s\n' "${scanned[@]}" | sort -u | sed 's#^tests/##' | paste -sd' ')"
         if ((${#tests[@]} > 0)); then
             for t in "${tests[@]}"; do selected[$t]=1; done
-            why+=("$f: $(printf '%s\n' "${tests[@]}" | sort -u | sed 's#^tests/##' | paste -sd' ')")
+            why+=("$f: $(printf '%s\n' "${tests[@]}" | sort -u | sed 's#^tests/##' | paste -sd' ')$also")
         elif [[ $exempt == E ]]; then
-            why+=("$f: exempt, no test")
+            why+=("$f: exempt${also:-, no test}")
         elif [[ $f =~ ^tests/test-[^/]*\.sh$ ]]; then
-            why+=("$f: a deleted test, nothing to run")
+            why+=("$f: a deleted test, nothing to run$also")
         else
             all=1
             why+=("$f: no test covers it and it is neither global nor exempt, every test")

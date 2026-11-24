@@ -8,7 +8,7 @@ Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
 - **Clean.** Every part is an opt-in layer. The default is `base chaotic omarchy-repo desktop theme shell`.
-- **No clutter.** One thin bar that flows into a slim frame around the screen. Double-click the bar to make it transparent; its text then takes a colour that contrasts with the wallpaper. The tray hides behind a chevron until you hover over it or pin it. Indicators (privacy dots, stay-awake, do-not-disturb) appear only while something is active. Everything else is a panel opened on demand: menu, launcher, notifications, AI, clipboard, calendar, Wi-Fi, Bluetooth.
+- **No clutter.** One thin bar. A slim frame around the screen is off by default; set `frame.enabled` in your `shell.json` to draw it. Double-click the bar to make it transparent; its text then takes a colour that contrasts with the wallpaper. The tray hides behind a chevron until you hover over it or pin it. Indicators (privacy dots, stay-awake, do-not-disturb) appear only while something is active. Everything else is a panel opened on demand: menu, launcher, notifications, AI, clipboard, calendar, Wi-Fi, Bluetooth.
 - **Light.** The idle shell, with every default widget, measures 176 MiB RSS / 123 MiB PSS with ~0 % CPU on the reference laptop (omarchy-shell beside it: 630 MiB). Sampling lives in one small Rust daemon (`haseen-sidecar`, 3 MiB), not in QML timers: several widgets share one sampler, nothing is read while nothing is shown, and without the daemon the features that need it hide.
 - **Extendable with AI.** Plugins are a `manifest.json` plus QML, checked against a JSON schema (`haseen plugin new/validate/enable`). An agent skill (`haseen ai skill install`) teaches coding agents to do this safely.
 - **Local AI.** Ollama or llama.cpp, listening on 127.0.0.1 only, with a chat panel in the shell.
@@ -97,7 +97,9 @@ NixOS is not supported: the installer refuses it.
 - [`docs/decisions/`](docs/decisions/): ADRs
 - [`plans/README.md`](plans/README.md): the engineering record and its status
 - [`AGENTS.md`](AGENTS.md): conventions and gates (`tools/lint.sh`, `tests/run.sh --affected` before a
-  commit, `tools/check-docs.sh`); `main` runs the full `tests/run.sh` after each merge
+  commit, `tools/check-docs.sh`). CI runs the affected selection on every pull request and on every
+  push to `main`; the full `tests/run.sh` runs only from a manual run of the `ci` workflow or when a
+  change touches a global path (plan 176)
 
 ## Status
 

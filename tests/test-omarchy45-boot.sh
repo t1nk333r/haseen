@@ -3,6 +3,7 @@
 # haseen:covers share/haseen/default/systemd/system/** share/haseen/default/systemd/system.conf.d/**
 # haseen:covers share/haseen/lib/{boot,bootmenu,limine-header,screen}.sh share/haseen/layers/base/layer.sh
 # haseen:covers share/haseen/layers/secureboot/secureboot.sh share/haseen/omarchy/bin/omarchy-system
+# haseen:covers tests/fixtures/sb-sdboot-enabled/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
