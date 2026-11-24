@@ -16,8 +16,9 @@ usage() {
 Usage: haseen hibernation status [--quiet]
 
 Exit 0 when this machine can hibernate: the kernel supports it, swap outside
-zram is at least as large as RAM, the initramfs can resume, and the kernel
-command line says where the image is.
+zram holds at least /sys/power/image_size (the largest image the kernel
+writes, 2/5 of RAM by default), the initramfs can resume, and the command line
+the next boot gets says where the image is.
 
   --quiet   print nothing, just the exit code
 EOF

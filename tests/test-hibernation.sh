@@ -72,6 +72,42 @@ printf 'KERNEL_CMDLINE[default]+=" resume=/dev/mapper/root resume_offset=1"\n' \
 HASEEN_SYSROOT="$zramonly" capture haseen hibernation status
 assert_status "zram alone is not hibernation swap" 1 "$STATUS"
 
+# The help says what the check compares: swap against image_size, not RAM.
+capture haseen hibernation status --help
+assert_contains "the help names the image limit swap must hold" "$OUTPUT" "at least /sys/power/image_size"
+assert_not_contains "and not RAM's size" "$OUTPUT" "as large as RAM"
+
+# --- resume= only counts where the next boot reads it (plan 188) -----------------
+# /etc/default/limine replaces KERNEL_CMDLINE[default] with '=', so the
+# drop-in's resume= never reaches the merged line limine-entry-tool writes.
+replaced="$(make_sysroot replaced)"
+add_swap "$replaced" 32554512
+printf 'HOOKS+=(resume)\n' >"$replaced/etc/mkinitcpio.conf.d/haseen-resume.conf"
+printf 'ESP_PATH="/boot"\nKERNEL_CMDLINE[default]="root=UUID=abc rw quiet splash"\n' >"$replaced/etc/default/limine"
+printf 'KERNEL_CMDLINE[default]+=" resume=/dev/mapper/root resume_offset=123"\n' \
+    >"$replaced/etc/limine-entry-tool.d/haseen-resume.conf"
+HASEEN_SYSROOT="$replaced" capture haseen hibernation status
+assert_status "a drop-in a later '=' replaces: not ready" 1 "$STATUS"
+assert_contains "and no resume= is reported" "$OUTPUT" "no resume= parameter"
+# The same words in '+=' form do reach it.
+printf 'ESP_PATH="/boot"\nKERNEL_CMDLINE[default]+="root=UUID=abc rw quiet splash"\n' >"$replaced/etc/default/limine"
+HASEEN_SYSROOT="$replaced" capture haseen hibernation status
+assert_status "appended, the drop-in counts" 0 "$STATUS"
+assert_contains "with its offset" "$OUTPUT" "offset 123"
+printf 'ESP_PATH="/boot"\nKERNEL_CMDLINE[default]="root=UUID=abc rw quiet splash"\n' >"$replaced/etc/default/limine"
+# GRUB: a commented-out line is not the command line.
+grubroot="$(make_sysroot grub)"
+add_swap "$grubroot" 32554512
+printf 'HOOKS+=(resume)\n' >"$grubroot/etc/mkinitcpio.conf.d/haseen-resume.conf"
+rm "$grubroot/etc/default/limine"
+printf '#GRUB_CMDLINE_LINUX_DEFAULT="quiet resume=/dev/mapper/root resume_offset=9"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet"\n' \
+    >"$grubroot/etc/default/grub"
+HASEEN_SYSROOT="$grubroot" capture env BOOTLOADER=grub haseen hibernation status
+assert_status "GRUB: a commented resume= does not count" 1 "$STATUS"
+printf 'GRUB_CMDLINE_LINUX_DEFAULT="quiet resume=/dev/mapper/root resume_offset=9"\n' >"$grubroot/etc/default/grub"
+HASEEN_SYSROOT="$grubroot" capture env BOOTLOADER=grub haseen hibernation status
+assert_status "GRUB: the uncommented line does" 0 "$STATUS"
+
 # --- hooks are evaluated the way mkinitcpio evaluates them -------------------
 # A drop-in that assigns HOOKS replaces the list; the systemd initramfs resumes
 # from the command line and needs no resume hook at all.
@@ -125,6 +161,52 @@ assert_contains "the resume hook is added for busybox hooks" "$OUTPUT" "HOOKS+=(
 assert_contains "the command line gets resume=" "$OUTPUT" "resume=/dev/mapper/root"
 assert_contains "s2idle gets the ACPI alarm" "$OUTPUT" "rtc_cmos.use_acpi_alarm=1"
 assert_contains "and the initramfs is rebuilt" "$OUTPUT" "limine-mkinitcpio"
+assert_contains "and it says it is set up" "$OUTPUT" "hibernation is set up;"
+before_append="$(grep -n 'append to /etc/fstab' <<<"$OUTPUT" | head -n1 | cut -d: -f1 || true)"
+mount_at="$(grep -n 'mount -o subvol=/@swap,noatime' <<<"$OUTPUT" | head -n1 | cut -d: -f1 || true)"
+[[ -n $mount_at && -n $before_append ]] && ((mount_at < before_append)) && _pass ||
+    _fail "the new fstab line is written only after its subvolume has mounted"
+
+# Where the drop-in cannot reach the kernel (a later '=' replaces it), setup
+# says what to add and fails instead of saying it is set up (plan 188).
+rm -f "$replaced/etc/limine-entry-tool.d/haseen-resume.conf"
+: >"$replaced/etc/fstab"
+HASEEN_SYSROOT="$replaced" capture haseen hibernation setup --dry-run --yes
+assert_status "a drop-in that cannot count: setup fails" 1 "$STATUS"
+assert_dry_pure "hibernation setup, replaced cmdline" "$OUTPUT"
+assert_contains "it says where to add resume=" "$OUTPUT" "replaces every drop-in"
+assert_contains "and that hibernation is not set up yet" "$OUTPUT" "hibernation is not set up yet"
+assert_not_contains "never that it is set up" "$OUTPUT" "hibernation is set up;"
+
+# A real run, with a sudo that records and runs nothing: the subvolume setup
+# looks for is the one it creates and mounts (plan 188: it once looked for
+# "swap" and created "@swap").
+: >"$SANDBOX/sudo.log"
+stub sudo "printf '%s\n' \"\$*\" >>'$SANDBOX/sudo.log'
+case \"\$*\" in
+'btrfs subvolume show '*/@swap) [ -n \"\${HASEEN_TEST_NO_SWAP:-}\" ] && exit 1; exit 0 ;;
+'btrfs subvolume show '*) exit 1 ;;
+'btrfs subvolume create '*) [ -n \"\${HASEEN_TEST_CREATE_FAILS:-}\" ] && exit 1; exit 0 ;;
+tee* | 'sh -c'*) cat >/dev/null ;;
+esac
+exit 0"
+capture haseen hibernation setup --yes
+assert_contains "an existing @swap is looked up by that name" "$(<"$SANDBOX/sudo.log")" "btrfs subvolume show "
+assert_contains "as @swap" "$(grep 'subvolume show' "$SANDBOX/sudo.log")" "/@swap"
+assert_not_contains "and is not created again" "$(<"$SANDBOX/sudo.log")" "btrfs subvolume create"
+# No @swap, and creating it fails: the top level is unmounted before it stops,
+# and fstab gets no line for a subvolume that does not exist.
+: >"$SANDBOX/sudo.log"
+capture env HASEEN_TEST_NO_SWAP=1 HASEEN_TEST_CREATE_FAILS=1 haseen hibernation setup --yes
+assert_status "a failed create stops setup" 1 "$STATUS"
+assert_contains "and says so" "$OUTPUT" "could not create the @swap subvolume"
+create_at="$(grep -n '^btrfs subvolume create' "$SANDBOX/sudo.log" | cut -d: -f1 || true)"
+umount_at="$(grep -n '^umount ' "$SANDBOX/sudo.log" | cut -d: -f1 || true)"
+[[ -n $create_at && -n $umount_at ]] && ((create_at < umount_at)) && _pass ||
+    _fail "the top level is unmounted after the failed create" "$(<"$SANDBOX/sudo.log")"
+assert_not_contains "no fstab line for it" "$(<"$SANDBOX/sudo.log")" "tee -a"
+assert_eq "and nothing is mounted at /swap" "0" "$(grep -c ' /swap$' "$SANDBOX/sudo.log")"
+rm -f "$SANDBOX/stubs/sudo"
 
 # On systemd hooks the resume hook must NOT be added: the busybox hook does not
 # exist there and would fail the build.
