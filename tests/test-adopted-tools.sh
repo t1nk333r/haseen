@@ -116,7 +116,7 @@ done
 if command -v node >/dev/null; then
     capture node "$PLUGINS/haseen.browser-picker/tests/model.test.js"
     assert_status "browser-picker model suite (the fork's)" 0 "$STATUS"
-    assert_contains "browser-picker model suite count" "$OUTPUT" "41 passed"
+    assert_contains "browser-picker model suite count" "$OUTPUT" "42 passed"
     capture node "$PLUGINS/haseen.vpn/tests/run.js"
     assert_status "VPN model suite (the fork's)" 0 "$STATUS"
     assert_contains "VPN model suite count" "$OUTPUT" "113 passed, 0 failed"
@@ -153,6 +153,12 @@ key -d 5 57:1 57:0
 key -d 5 48:1 48:0
 key -d 5 28:1 28:0" "$(cat "$KEYLOG")"
 assert_not_contains "the text never reaches the key command" "$(cat "$KEYLOG")" "aA"
+# Not as text, but the codes spell it: the worker must not promise secrecy
+# (plan 198).
+assert_contains "the worker says its key codes can be read back" \
+    "$(cat "$PLUGINS/haseen.typist/typist-worker.py")" "layout maps those codes back to the text"
+assert_not_contains "and no longer says the codes keep the text out of /proc" \
+    "$(cat "$PLUGINS/haseen.typist/typist-worker.py")" "where it would"
 work 'z@' --layout de
 assert_status "worker on de" 0 "$STATUS"
 assert_eq "an AltGr character is skipped, not sent as Alt" "key -d 5 21:1 21:0" "$(cat "$KEYLOG")"
@@ -191,6 +197,11 @@ assert_status "a snippet whose text changed is refused" 1 "$STATUS"
 assert_contains "with its reason" "$OUTPUT" '"error":"pick_mismatch"'
 capture haseen typist type snippet 7 "$md5" --dry-run
 assert_status "an index past the end is refused" 1 "$STATUS"
+# The picker sends the file's index (plan 198): a snippet after a blank entry
+# is index 1, and typing it by that index and its md5 works.
+printf '{"version":1,"snippets":[{"name":"todo","text":""},{"name":"sig","text":"hello"}]}\n' >"$CFG/typist.json"
+capture haseen typist type snippet 1 "$(printf hello | md5sum | cut -c1-32)" --dry-run
+assert_status "a snippet after a blank entry types by the file's index" 0 "$STATUS"
 stub cliphist 'case $1 in list) printf "9\ttext entry\n8\t[[ binary data 1 KiB png 2x2 ]]\n";; esac'
 capture haseen typist type recent 9 --dry-run
 assert_status "a recent text entry" 0 "$STATUS"
@@ -275,9 +286,14 @@ Item {
         out("cliphist", recent);
         out("recentRows", T.recentRows(recent, 1).map(r => r.id + "|" + r.preview + "|" + (r.text === undefined)));
         const cfg = T.parseSnippets('{"snippets":[{"text":"aaa"},{"name":"B","text":"bbb"},{"text":"  "},7]}');
-        out("snippets", cfg.snippets.map(s => s.name + "=" + s.text));
-        out("pin", T.pinSnippet(cfg, "bbb").snippets.map(s => s.text));
-        out("remove", T.removeSnippet(cfg, 0).snippets.map(s => s.text));
+        out("snippets", T.snippetRows(cfg, 99).map(r => r.index + ":" + r.name + "=" + r.text));
+        out("pin", T.pinSnippet(cfg, "bbb").snippets);
+        out("remove", T.removeSnippet(cfg, 0).snippets);
+        // A blank entry before a usable one: the row keeps the file's index,
+        // which the CLI reads, and a delete keeps the blank entry.
+        const held = T.parseSnippets('{"snippets":[{"name":"todo","text":""},{"name":"sig","text":"hello"}]}');
+        out("heldRows", T.snippetRows(held, 99).map(r => r.index + ":" + r.name));
+        out("heldRemove", T.removeSnippet(held, 1).snippets);
         out("size", [T.sizeOf("Grüße"), T.sizeOf("😀"), T.snippetRows(cfg, 2).map(r => r.tooLarge)]);
         out("filter", T.filterRows(T.snippetRows(cfg, 99), "B").map(r => r.text));
         const reg = {
@@ -301,9 +317,12 @@ EOF
     capture env QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 30 "$QML_BIN" "$SANDBOX/Units.qml"
     assert_eq "Picker: text entries of cliphist, binary and blank dropped" '[{"id":"12","preview":"hello  world"},{"id":"9","preview":"second"}]' "$(result cliphist)"
     assert_eq "Picker: recent rows by id, capped, without the truncated text" '["12|hello world|true"]' "$(result recentRows)"
-    assert_eq "Picker: snippets named, blank and malformed dropped" '["aaa=aaa","B=bbb"]' "$(result snippets)"
-    assert_eq "Picker: pinning moves an existing snippet to the top" '["bbb","aaa"]' "$(result pin)"
-    assert_eq "Picker: remove by index" '["bbb"]' "$(result remove)"
+    assert_eq "Picker: snippet rows named, blank and malformed not shown" '["0:aaa=aaa","1:B=bbb"]' "$(result snippets)"
+    assert_eq "Picker: pinning moves an existing snippet to the top, the rest kept as written" \
+        '[{"name":"bbb","text":"bbb"},{"name":"aaa","text":"aaa"},{"text":"  "},7]' "$(result pin)"
+    assert_eq "Picker: remove by index, the rest kept as written" '[{"name":"B","text":"bbb"},{"text":"  "},7]' "$(result remove)"
+    assert_eq "Picker: a row after a blank entry keeps the file's index" '["1:sig"]' "$(result heldRows)"
+    assert_eq "Picker: deleting it keeps the blank entry" '[{"name":"todo","text":""}]' "$(result heldRemove)"
     assert_eq "Picker: UTF-8 sizes and the byte cap" '[7,4,[true,true]]' "$(result size)"
     assert_eq "Picker: filter by name" '["bbb"]' "$(result filter)"
     assert_eq "Settings: rows; only a dir directly in haseen's plugin dir is deletable" \
@@ -396,6 +415,9 @@ QML
     printf '{"version":1,"rules":[{"pattern":"work.example","entryId":"beta:","learned":false}]}\n' >"$XDG_CONFIG_HOME/haseen/browser-picker.json"
     printf '{"selectionFile":"%s/sel1","doneFile":"%s/done1","urls":["https://app.work.example/x"],"flags":[]}' "$SANDBOX" "$SANDBOX" >"$SANDBOX/req1.json"
     printf '{"selectionFile":"%s/sel2","doneFile":"%s/done2","urls":["https://other.example/y"],"flags":["--incognito"]}' "$SANDBOX" "$SANDBOX" >"$SANDBOX/req2.json"
+    for n in 3 4 5; do
+        printf '{"selectionFile":"%s/sel%s","doneFile":"%s/done%s","urls":["https://n%s.work.example/"],"flags":[]}' "$SANDBOX" "$n" "$SANDBOX" "$n" "$n" >"$SANDBOX/req$n.json"
+    done
     sed "s|@S@|$SANDBOX|g" >"$h/shell.qml" <<'QML'
 import QtQuick
 import Quickshell
@@ -424,6 +446,20 @@ ShellRoot {
             console.warn("RESULT asks " + JSON.stringify({ opened: s.opened, host: s.host }));
             s.finish(s.entries[0], true);
             console.warn("RESULT picked " + JSON.stringify({ answer: s.lastAnswer, opened: s.opened, rules: s.rules.map(r => r.pattern + "=" + r.entryId + "=" + r.learned) }));
+            // Three links at once: the second and third arrive while the
+            // first is read. Quickshell restarts a running Process once,
+            // with its latest command, so without the queue the third
+            // replaced the second (plan 198).
+            s.pick("@S@/req3.json");
+            s.pick("@S@/req4.json");
+            s.pick("@S@/req5.json");
+            t4.running = true;
+        }
+    }
+    Timer {
+        id: t4; interval: 800
+        onTriggered: {
+            console.warn("RESULT burst " + JSON.stringify({ answer: s.lastAnswer, opened: s.opened }));
             Qt.quit();
         }
     }
@@ -438,6 +474,11 @@ QML
         "{\"answer\":[\"$SANDBOX/alpha\",\"https://other.example/y\"],\"opened\":false,\"rules\":[\"other.example=alpha:=true\",\"work.example=beta:=false\"]}" "$(result picked)"
     assert_eq "browser-picker: the argv is NUL-separated in the selection file" "$SANDBOX/alpha|https://other.example/y|" "$(tr '\0' '|' <"$SANDBOX/sel2")"
     assert_eq "browser-picker: both callers were released" "x x" "$(cat "$SANDBOX/done1" "$SANDBOX/done2" | tr '\n' ' ' | sed 's/ $//')"
+    assert_eq "browser-picker: three links at once, the last answered last" "{\"answer\":[\"$SANDBOX/beta\",\"https://n5.work.example/\"],\"opened\":false}" "$(result burst)"
+    for n in 3 4 5; do
+        assert_eq "browser-picker: link $n of three at once got its own answer" "$SANDBOX/beta|https://n$n.work.example/|" "$(tr '\0' '|' <"$SANDBOX/sel$n" 2>/dev/null)"
+    done
+    assert_eq "browser-picker: and all three callers were released" "x x x" "$(cat "$SANDBOX/done3" "$SANDBOX/done4" "$SANDBOX/done5" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
     assert_eq "browser-picker: the rules file holds rules only" '["rules","version"]' "$(jq -c keys "$XDG_CONFIG_HOME/haseen/browser-picker.json")"
     assert_eq "browser-picker: rankings in haseen's state" '["alpha:","beta:"]' "$(jq -c '.entries | keys' "$XDG_STATE_HOME/haseen/browser-picker.json")"
 

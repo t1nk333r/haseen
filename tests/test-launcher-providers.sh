@@ -429,7 +429,7 @@ ShellRoot {
                 ]);
                 const rows = probe.provider("haseen.accounts").rowsFor(accounts, "account");
                 probe.put("accountFixture", rows.map(r => r.title + " | " + r.subtitle));
-                probe.put("accountGlyphs", rows.every(r => r.glyph !== "" && r.icon === ""));
+                probe.put("accountGlyphs", rows.every(r => [0xF06C4, 0xF06A9].some(c => r.glyph === String.fromCodePoint(c)) && r.icon === ""));
                 // Enter on an account: the CLI's use in a floating terminal.
                 probe.provider("haseen.accounts").rowsFor(accounts, "work")[0].exec();
                 probe.step = 2;
@@ -530,7 +530,7 @@ QML
         "$(jq -c . <<<'["Add a Claude account…","Add a Codex account…","Add a Grok account…","Agent accounts"]')" "$(r .accountRows)"
     assert_eq "accounts: a listed account is a row, in use first, its provider and state on the detail line" \
         "$(jq -c . <<<'["work | Claude account  ·  me@work.test  ·  Pro  ·  in use","Main | Claude account  ·  signed in","Add a Claude account… | sign in through a browser, in a home of its own","Add a Codex account… | sign in through a browser, in a home of its own","Add a Grok account… | sign in through a browser, in a home of its own","Agent accounts | list them: which account new sessions use; running ones stay"]')" "$(r .accountFixture)"
-    assert_eq "accounts: every row has a glyph and no icon-theme name" "true" "$(r .accountGlyphs)"
+    assert_eq "accounts: every row has one of the menu's agent glyphs (one code point) and no icon-theme name" "true" "$(r .accountGlyphs)"
     assert_contains "accounts: Enter runs the CLI's use in a floating terminal, through Apps.launch" "$ARGV" \
         "|--|$REPO/bin/haseen|config|terminal|--|$REPO/bin/haseen|agent|account|use|claude|work"
     assert_not_contains "nothing reached a stubbed binary" "$OUTPUT" "STUB-CALLED"

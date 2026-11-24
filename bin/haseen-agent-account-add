@@ -23,8 +23,9 @@ prints or sends a credential anywhere (plan 108).
 
   --check            print, per provider, whether a sign-in now would be the
                      first or an additional one
-  --reauth ACCOUNT   sign ACCOUNT (an id, or main) in again where it lives,
-                     after its sign-in lapsed
+  --reauth ACCOUNT   sign ACCOUNT (an id, or primary for the first login) in
+                     again where it lives, after its sign-in lapsed; main is
+                     the first login unless an added account holds that id
 
 Refused when the provider (or all) is listed in
 $HASEEN_USER_CONFIG/agents/login-refused or /etc/haseen/agents/login-refused.
@@ -131,12 +132,18 @@ login_in() {
 }
 
 if [[ -n $reauth ]]; then
-    if [[ $reauth == main || $reauth == primary ]]; then
+    # The id is looked up, not compared with "main": a renamed primary frees
+    # that id for an added account, whose sign-in must never land in the
+    # CLI's own home (plan 198). "main" still names the primary when no
+    # account holds it, as it did before the primary could be renamed.
+    reg="$(acct_load "$PROVIDER")"
+    account="$(acct_find "$reg" "$reauth")" ||
+        { [[ $reauth == main ]] && account="$(acct_find "$reg" primary)"; } ||
+        die "no $name account named $reauth (see: haseen agent account list $PROVIDER)"
+    if [[ $(jq -r '.primary == true' <<<"$account") == true ]]; then
         echo "Sign in to $name again in the browser that opens."
         login_primary || die "the $name sign-in did not finish"
     else
-        account="$(acct_find "$(acct_load "$PROVIDER")" "$reauth")" ||
-            die "no $name account named $reauth (see: haseen agent account list $PROVIDER)"
         home="$(acct_account_home "$PROVIDER" "$account")"
         echo "Sign in again as $(jq -r .label <<<"$account") in the private window that opens."
         login_in "$home" || die "the $name sign-in did not finish"
@@ -208,7 +215,7 @@ if same="$(jq -ce --arg id "$(jq -r .accountId <<<"$found")" \
     discard=true
     die "that is $(jq -r '.label + (if (.email // "") != "" then " (" + .email + ")" else "" end)' <<<"$same"), already here; try again and sign in as the other account in the private window"
 fi
-[[ -n $label ]] || label="$(jq -r '.email | split("@")[0]' <<<"$found")"
+[[ -n $label ]] || label="$(jq -r '(.email // "") | split("@")[0] // ""' <<<"$found")"
 [[ -n $label ]] || label=Account
 id="$(acct_unique_id "$PROVIDER" "$reg" "$label")"
 home="$AGENT_ACCOUNTS_DIR/$PROVIDER/$id"

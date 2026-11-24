@@ -398,10 +398,11 @@ Column {
         font.pixelSize: Theme.font.bodySmall
     }
 
-    // One record per collector, read once when the panel opens. A record
-    // that is missing or says nothing draws no line.
+    // One record per collector, read once when the panel opens: Omarchy's
+    // five and haseen's own CLIProxyAPI (cpa, plan 124). A record that is
+    // missing or says nothing draws no line.
     Repeater {
-        model: root.showUsage ? ["claude", "codex", "grok", "kimi", "fireworks"] : []
+        model: root.showUsage ? ["claude", "codex", "grok", "kimi", "fireworks", "cpa"] : []
 
         delegate: Column {
             id: usageRow
