@@ -3,6 +3,8 @@
 # wrappers redirect filesystem operations to the sysroot and never run managers.
 set -uo pipefail
 source "$HASEEN_PATH/lib/common.sh"
+# layer_run_function sources preflight.sh too; vapt_repo reads the distro.
+source "$HASEEN_PATH/lib/preflight.sh"
 LAYER_DIR="$HASEEN_PATH/layers/vapt"
 source "$LAYER_DIR/layer.sh"
 source "$LAYER_DIR/provision.sh"
@@ -81,6 +83,20 @@ pacman)
     printf 'STATE=%s\nREASON=%s\n' "${VAPT_PACMAN_STATE:-}" "${reason//$'\n'/ }"
     vapt_pacman_cleanup
     exit "$rc" ;;
+pacman-run)
+    # Several selected roots, one commit each in order, as vapt_provision
+    # applies them: VAPT_TARGET holds every root of the run.
+    [[ $1 != --yes ]] || { ASSUME_YES=true; shift; }
+    vapt_snapshot || exit $?
+    for target in "$@"; do VAPT_TARGET[$target]="$target"; done
+    worst=0
+    for target in "$@"; do
+        vapt_pacman_apply "$target"; rc=$?
+        ((rc <= worst)) || worst=$rc
+        printf 'STATE[%s]=%s\n' "$target" "${VAPT_PACMAN_STATE:-}"
+    done
+    vapt_pacman_cleanup
+    exit "$worst" ;;
 upgrade)
     ASSUME_YES=true
     vapt_snapshot || exit $?
@@ -112,9 +128,10 @@ repo-enable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac
     done
-    vapt_oniomarchy_enable_command; rc=$?
-    vapt_pacman_cleanup
-    exit "$rc" ;;
+    # The public entry point (plan 195): vapt_repo's enable branch must reach
+    # the staged subshell whose traps remove both stages. vapt_repo sources
+    # provision.sh again, so a VAPT_FAIL_WRITE override does not reach it.
+    vapt_repo enable ;;
 repo-disable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac

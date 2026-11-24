@@ -49,5 +49,7 @@
       "description": "Debug: expose the haseen.idle IPC target (state) for smoke tests"
     }
   },
-  "permissions": []
+  "permissions": [
+    "exec"
+  ]
 }

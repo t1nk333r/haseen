@@ -51,6 +51,43 @@ assert_not_contains "reinstall dry-run path has no parent traversal" "$OUTPUT" "
 # An upgrade runs four: layer apply, migrate, seed user and hw apply.
 haseen_path_calls="$(grep -Fc "HASEEN_PATH=$expected_haseen_path" <<<"$OUTPUT" || true)"
 assert_eq "reinstall CLI phases receive the same normalized path" 4 "$haseen_path_calls"
+# The install stamp names the commit only once the whole run has succeeded
+# (plan 186): written with the tree, a failed migration or layer step looked
+# installed, and the next `haseen update haseen` said "already installed" and
+# skipped it. The stub CLI fails the phase HASEEN_STUB_FAIL names.
+stage2="$SANDBOX/stage-stamp"
+mkdir -p "$stage2/bin" "$stage2/share"
+cp "$REPO/install.sh" "$stage2/install.sh"
+ln -s "$REPO/share/haseen" "$stage2/share/haseen"
+cat >"$stage2/bin/haseen" <<'EOF'
+#!/usr/bin/env bash
+printf 'PHASE %s\n' "$1"
+[[ $1 != "${HASEEN_STUB_FAIL:-}" ]]
+EOF
+chmod +x "$stage2/bin/haseen"
+stamp_run() {
+    capture env HASEEN_SYSROOT="$FIXTURES/desk-cachyos-amd" "$@" \
+        "$stage2/install.sh" --dry-run --yes --prefix "$SANDBOX/prefix-stamp" --layers base
+}
+stamp_line="DRYRUN: write $SANDBOX/prefix-stamp/share/haseen/.installed.new."
+stamp_run
+assert_status "a full run succeeds" 0 "$STATUS"
+assert_contains "a full run writes the stamp" "$OUTPUT" "$stamp_line"
+assert_contains "as a full install" "$OUTPUT" "    | scope=full"
+assert_eq "after its last phase (hw apply)" "PHASE hw" \
+    "$(grep -e '^PHASE ' -e "^$stamp_line" <<<"$OUTPUT" | grep -B1 "^$stamp_line" | head -n1)"
+for phase in layer migrate hw; do
+    stamp_run HASEEN_STUB_FAIL="$phase"
+    assert_status "a failed $phase phase fails the install" 1 "$STATUS"
+    assert_not_contains "and leaves the stamp as it was" "$OUTPUT" "$stamp_line"
+done
+capture env HASEEN_SYSROOT="$FIXTURES/desk-cachyos-amd" \
+    "$stage2/install.sh" --dry-run --yes --prefix "$SANDBOX/prefix-stamp" --tree-only
+assert_status "a tree-only run succeeds" 0 "$STATUS"
+assert_contains "and stamps the tree it installed" "$OUTPUT" "$stamp_line"
+assert_contains "as tree-only, so a full update still runs the layers" "$OUTPUT" "    | scope=tree"
+assert_not_contains "running no phase" "$OUTPUT" "PHASE "
+
 # The /proc scan cannot be faked in a hermetic test. Exercise the same argv/path
 # matcher against NUL-separated cmdline fixtures instead.
 source "$HASEEN_PATH/lib/doctor.sh"

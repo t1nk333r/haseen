@@ -100,15 +100,17 @@ ShellRoot {
 
     // launcher/lock/notifications go to the plugin that provides the role: a
     // loaded instance answering fn, else a panel provider for toggle().
-    function routeRole(role: string, fn: string): void {
+    // False when nothing took the call, so a caller with a fallback can use it.
+    function routeRole(role: string, fn: string): bool {
         if (Plugins.callRole(role, fn, []))
-            return;
+            return true;
         const pid = Plugins.provider(role);
         if (pid !== "" && fn === "toggle" && Plugins.componentUrl(pid, "panel") !== "") {
             togglePanel(pid);
-            return;
+            return true;
         }
         console.info("haseen: no plugin provides '" + role + "', " + role + "." + fn + "() ignored");
+        return false;
     }
 
     // Apply a setting at once (Config runtime layer) and persist it through
@@ -379,12 +381,24 @@ ShellRoot {
 
         // `haseen menu select`: open the menu as a pick list on REQUEST (a
         // JSON file). Answers this shell's PID, so the waiting caller can
-        // tell a shell that died from a user still choosing.
+        // tell a shell that died from a user still choosing, or
+        // "unavailable" when no menu plugin is on (plan 196). When the menu
+        // is on but its panel does not take the request even once opened
+        // (it failed to load), the caller's FIFO gets the line a closed
+        // menu writes, so `haseen menu select` ends with nothing chosen
+        // instead of waiting until the shell exits.
         function select(request: string): string {
-            if (!Plugins.callRole("menu", "pick", [request])) {
-                shell.routeRole("menu", "toggle");
-                Qt.callLater(() => Plugins.callRole("menu", "pick", [request]));
-            }
+            if (Plugins.callRole("menu", "pick", [request]))
+                return String(Quickshell.processId);
+            if (Plugins.provider("menu") === "")
+                return "unavailable";
+            shell.routeRole("menu", "toggle");
+            Qt.callLater(() => {
+                if (Plugins.callRole("menu", "pick", [request]))
+                    return;
+                console.warn("haseen: the menu did not take the pick request " + request);
+                Quickshell.execDetached(["sh", "-c", "f=$(jq -r '.doneFile // empty' -- \"$1\") && [ -p \"$f\" ] && printf 'x\\n' 1<>\"$f\"", "sh", request]);
+            });
             return String(Quickshell.processId);
         }
     }
@@ -459,8 +473,11 @@ ShellRoot {
     IpcHandler {
         target: "lock"
 
-        function lock(): void {
-            shell.routeRole("lock", "lock");
+        // "ok" once the lock plugin has the request, "unavailable" when no
+        // plugin answers the role (off, failed to load, not loaded yet), so
+        // `haseen system lock` and the sleep lock can fall back (plan 196).
+        function lock(): string {
+            return shell.routeRole("lock", "lock") ? "ok" : "unavailable";
         }
     }
 

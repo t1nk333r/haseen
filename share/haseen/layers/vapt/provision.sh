@@ -414,8 +414,9 @@ vapt_install_infra() {
         *) VAPT_INFRA_DONE[$name]=failed; result=1 ;;
         esac
         VAPT_INFRA_REASON[$name]="${VAPT_APPLY_REASON:-}"
-        VAPT_INFRA_REASON[$name]="${VAPT_INFRA_REASON[$name]//$'\n'/ }"
-        VAPT_INFRA_REASON[$name]="${VAPT_INFRA_REASON[$name]//$'\t'/ }"
+        # Tabs, newlines and terminal escapes from package-chosen text never
+        # reach a report row or the terminal (plan 195).
+        VAPT_INFRA_REASON[$name]="${VAPT_INFRA_REASON[$name]//[[:cntrl:]]/ }"
         VAPT_INFRA_ROWS+=("$name"$'\t'"$target"$'\t'"${VAPT_INFRA_DONE[$name]}"$'\t'"${VAPT_INFRA_REASON[$name]}")
     done
     return "$result"
@@ -424,25 +425,31 @@ vapt_report() {
     printf '# haseen-vapt-report-v1\nlogical\tselected_groups\tselected_source\ttarget\tresolution_state\tapply_state\treason\tattempted_tiers\n'
     local logical reason
     for logical in "${VAPT_ITEMS[@]}"; do
-        reason="${VAPT_REASON[$logical]}"; reason="${reason//$'\n'/ }"; reason="${reason//$'\t'/ }"
+        # Reasons quote package metadata and pacman output: tabs, newlines
+        # and terminal escapes never reach a row or the terminal (plan 195).
+        reason="${VAPT_REASON[$logical]//[[:cntrl:]]/ }"
         printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$logical" "${VAPT_MEMBERSHIP[$logical]}" "${VAPT_SOURCE[$logical]}" "${VAPT_TARGET[$logical]}" "${VAPT_RESOLUTION[$logical]}" "${VAPT_APPLIED[$logical]}" "$reason" "${VAPT_ATTEMPTS[$logical]}"
     done
-    printf '# environment\t%s\n# source\t%s\n# mutation-failed\t%s\n' "$VAPT_ENV_STATUS" "${VAPT_SOURCE_REASON:-observed source metadata}" "$VAPT_MUTATION_FAILED"
+    reason="${VAPT_SOURCE_REASON:-observed source metadata}"
+    printf '# environment\t%s\n# source\t%s\n# mutation-failed\t%s\n' "$VAPT_ENV_STATUS" "${reason//[[:cntrl:]]/ }" "$VAPT_MUTATION_FAILED"
     # The private source's state for this operation is an annotation: a
     # declined or unselected source alone never degrades a complete run.
-    reason="${VAPT_ONIOMARCHY_REASON//$'\n'/ }"
-    printf '# oniomarchy\t%s\t%s\n' "$VAPT_ONIOMARCHY_STATE" "${reason//$'\t'/ }"
+    reason="${VAPT_ONIOMARCHY_REASON//[[:cntrl:]]/ }"
+    printf '# oniomarchy\t%s\t%s\n' "$VAPT_ONIOMARCHY_STATE" "$reason"
     for logical in "${VAPT_INFRA_ROWS[@]}"; do printf '# infrastructure\t%s\n' "$logical"; done
     # Dependencies a commit installed: annotations, never launcher roots.
     for logical in "${VAPT_DEPENDENCY_ROWS[@]}"; do printf '# dependency\t%s\n' "$logical"; done
 }
 # vapt_shell_active — 0 when a command in ~/.bashrc or ~/.zshrc sources the
-# owned link (a comment or other mention does not count). Read-only: user rc
-# files belong to the user, so haseen only reports the line to add.
+# owned link, or sources this haseen's default/shell/init.sh (the include
+# `haseen seed user` adds), which sources the link itself. A comment or other
+# mention does not count. Read-only: user rc files belong to the user, so
+# haseen only reports the line to add (plan 195).
 vapt_shell_active() {
     local rc
     for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
         vapt_meta includes "$rc" "$HASEEN_USER_CONFIG/vapt/shell.sh" 2>/dev/null && return 0
+        vapt_meta includes "$rc" "$HASEEN_PATH/default/shell/init.sh" 2>/dev/null && return 0
     done
     return 1
 }

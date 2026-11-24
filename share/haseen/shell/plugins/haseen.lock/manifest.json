@@ -42,7 +42,10 @@
       "description": "A fingerprint attempt that neither shows a message nor ends within this many ms is aborted and retried as a failure (a hung PAM conversation)"
     }
   },
-  "permissions": [],
+  "permissions": [
+    "exec",
+    "files:write"
+  ],
   "provides": [
     "lock"
   ]

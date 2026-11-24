@@ -164,13 +164,18 @@ assert_not_contains "dms --no-clipboard copies nothing" "$OUTPUT" "wl-copy"
 capture "$DMS_SHIM" screenshot scroll
 assert_status "dms screenshot scroll is refused" 2 "$STATUS"
 stub qs 'echo "qs: $*"'
-stub notify-send 'echo "notify-send: $*"'
+# notify-send reads options until "--", as GOption does.
+stub notify-send 'for a in "$@"; do case $a in --) break ;; --app-name=* | --urgency=*) ;; -*) echo "Unknown option $a" >&2; exit 1 ;; esac; done
+echo "notify-send: $*"'
 capture "$DMS_SHIM" ipc call screenCaptureToolbar cancelRecording
 assert_eq "dms ipc call goes to the haseen shell" "qs: -p $HASEEN_PATH/shell ipc call screenCaptureToolbar cancelRecording" "$OUTPUT"
 capture "$DMS_SHIM" ipc screenCaptureToolbar recordingStarted
 assert_eq "dms ipc without call too" "qs: -p $HASEEN_PATH/shell ipc call screenCaptureToolbar recordingStarted" "$OUTPUT"
 capture "$DMS_SHIM" ipc call toast infoWith "Recording Stopped" "Saved to x.mkv" "" screencapture
-assert_eq "dms toast is a notification" "notify-send: --app-name=haseen --urgency=low Recording Stopped Saved to x.mkv" "$OUTPUT"
+assert_eq "dms toast is a notification" "notify-send: --app-name=haseen --urgency=low -- Recording Stopped Saved to x.mkv" "$OUTPUT"
+capture "$DMS_SHIM" ipc call toast warn "--- connection lost ---"
+assert_status "a toast that starts with - is shown (plan 196)" 0 "$STATUS"
+assert_eq "as text" "notify-send: --app-name=haseen --urgency=normal -- --- connection lost ---" "$OUTPUT"
 capture "$DMS_SHIM" restart
 assert_status "other dms commands are refused" 2 "$STATUS"
 

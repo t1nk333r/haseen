@@ -11,11 +11,12 @@ import qs.Haseen
 //
 // ttfx (default): Omarchy's screensaver, ported in bin/haseen-screensaver.
 //   `--ttfx-launch` opens a fullscreen terminal running ttfx on every
-//   monitor, each on a special workspace; a key press or a focus change in
-//   one of them closes them all. The terminals are Hyprland clients, not
-//   children of the shell, so they are followed through Hyprland's
-//   openwindow/closewindow events, and `--stop` closes them. Without ttfx
-//   or a supported terminal it falls back to native.
+//   monitor, each on a special workspace; a key press in one of them, or
+//   focus leaving them, closes them all. The terminals are Hyprland clients,
+//   not children of the shell, so they are followed through Hyprland's
+//   openwindow/closewindow events, focus through activewindow, and `--stop`
+//   closes them. Without ttfx or a supported terminal it falls back to
+//   native.
 // native: one overlay per screen with a clock and the branding text (default
 //   the selected mark's logo, Branding.logoPath; or the user's text or
 //   image) on the theme background. The card moves a few pixels every 2 s
@@ -125,6 +126,14 @@ Scope {
             _windowCount = Object.keys(w).length;
             if (_windowCount === 0)
                 _allClosed();
+        } else if (name === "activewindow") {
+            // CLASS,TITLE. Focus moved off the terminals once the launcher
+            // has placed them all (it moves focus between monitors while it
+            // works). --stop-unfocused asks Hyprland once before closing
+            // them, so an event read late cannot end a screensaver that has
+            // focus again (plan 196).
+            if (active && style === "ttfx" && _windowCount > 0 && !launcher.running && data.split(",")[0] !== appId)
+                Quickshell.execDetached([command, "--stop-unfocused"]);
         }
     }
 

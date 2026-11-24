@@ -52,12 +52,56 @@ assert_not_contains "nor one without a login shell" "$OUTPUT" "locked"
 assert_not_contains "nor one without a real home" "$OUTPUT" "svc"
 assert_contains "the sessions are listed" "$OUTPUT" "hyprland-uwsm"
 
+# greetd runs the graphical greeter as `greeter`, which every user's password
+# is typed into: never from a checkout, which its owner can edit and which the
+# greeter may not even reach (plan 196). This checkout is not in the sysroot.
 capture haseen setup greeter haseen --dry-run --yes
+assert_status "a checkout is refused as the graphical greeter" 1 "$STATUS"
+assert_contains "saying it must be an installed tree" "$OUTPUT" "must come from an installed haseen only root can change"
+assert_not_contains "and planning nothing" "$OUTPUT" "DRYRUN:"
+
+# root_stat on|off — stat(1) answers root_node_stat (lib/common.sh) as if
+# root owned every file, modes kept (tests/test-omarchy-guard.sh does the
+# same): the ownership decisions run where user namespaces do not.
+REAL_STAT="$(command -v stat)"
+root_stat() {
+    if [[ $1 == off ]]; then
+        rm -f "$SANDBOX/stubs/stat"
+        return 0
+    fi
+    stub stat "$(sed "s|@STAT@|$REAL_STAT|g" <<'EOF'
+if [ "$1" = --printf ] && [ "$2" = '%u %a %F\t%n\0' ]; then
+    shift 2
+    exec @STAT@ --printf '0 %a %F\t%n\0' "$@"
+fi
+exec @STAT@ "$@"
+EOF
+)"
+}
+# This tree's greeter planted at its own path in the sysroot, nothing in it
+# writable by group or others, and root answering for its owner: what an
+# installed tree looks like.
+tree="$(readlink -f "$HASEEN_PATH/../..")"
+mkdir -p "$sysroot$tree/bin" "$sysroot$tree/share/haseen/lib" "$sysroot$tree/share/haseen/shell/greeter"
+cp "$REPO/bin/haseen-greeter" "$sysroot$tree/bin/"
+cp "$HASEEN_PATH/VERSION" "$sysroot$tree/share/haseen/"
+cp "$HASEEN_PATH/lib/"* "$sysroot$tree/share/haseen/lib/"
+cp "$HASEEN_PATH/shell/greeter/"* "$sysroot$tree/share/haseen/shell/greeter/"
+chmod -R go-w "$sysroot"
+root_stat on
+
+capture haseen setup greeter haseen --dry-run --yes
+assert_status "an installed greeter is accepted" 0 "$STATUS"
 assert_dry_pure "greeter switch dry run" "$OUTPUT"
 assert_contains "it plans the choice file" "$OUTPUT" "/etc/haseen/greeter"
 assert_contains "and the greetd config" "$OUTPUT" "/etc/greetd/config.toml"
 assert_contains "pointing greetd at haseen-greeter by absolute path" "$OUTPUT" "command = \"$REPO/bin/haseen-greeter\""
 assert_eq "a dry run changes nothing" "" "$(cat "$sysroot/etc/haseen/greeter" 2>/dev/null || true)"
+chmod g+w "$sysroot$tree/share/haseen/shell/greeter"
+capture haseen setup greeter haseen --dry-run --yes
+assert_status "a greeter shell its group can write is refused" 1 "$STATUS"
+assert_contains "naming the directory" "$OUTPUT" "$tree/share/haseen/shell/greeter is writable by its group or by others"
+chmod g-w "$sysroot$tree/share/haseen/shell/greeter"
 
 echo haseen >"$sysroot/etc/haseen/greeter"
 capture haseen setup greeter status
@@ -113,6 +157,18 @@ capture haseen setup greeter autologin off --dry-run --yes
 assert_contains "turning it off removes the record" "$OUTPUT" "/etc/haseen/autologin"
 assert_not_contains "and the config loses its initial session" "$OUTPUT" "[initial_session]"
 rm -f "$sysroot/etc/haseen/autologin"
+# Autologin rewrites the whole config, greeter line included: with the haseen
+# greeter chosen, only from a tree greetd may run.
+echo haseen >"$sysroot/etc/haseen/greeter"
+capture haseen setup greeter autologin t1nk33r --dry-run --yes
+assert_status "autologin keeps an installed greeter" 0 "$STATUS"
+assert_contains "pointing greetd at it" "$OUTPUT" "command = \"$tree/bin/haseen-greeter\""
+root_stat off
+capture haseen setup greeter autologin t1nk33r --dry-run --yes
+assert_status "autologin from a checkout with the haseen greeter is refused" 1 "$STATUS"
+assert_contains "naming the way back that works from here" "$OUTPUT" "haseen setup greeter tuigreet works from here"
+assert_not_contains "and plans nothing" "$OUTPUT" "DRYRUN:"
+rm -f "$sysroot/etc/haseen/greeter"
 
 # --- the compositor config the launcher generates ------------------------------
 capture haseen greeter --print-config

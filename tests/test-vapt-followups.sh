@@ -17,6 +17,9 @@ repack() {
     local members=(.PKGINFO usr)
     [[ ! -f $PACKAGE/.INSTALL ]] || members+=(.INSTALL)
     [[ ! -d $PACKAGE/etc ]] || members+=(etc)
+    [[ ! -d $PACKAGE/opt ]] || members+=(opt)
+    [[ ! -e $PACKAGE/run ]] || members+=(run)
+    [[ ! -e $PACKAGE/lib ]] || members+=(lib)
     tar -czf "$ARCHIVE" -C "$PACKAGE" "${members[@]}"
 }
 review() { capture python3 "$VAPT_META" audit "$ARCHIVE" --root "$ROOT"; }
@@ -28,8 +31,10 @@ activation_hook() { # FILE OPERATION TYPE TARGET WHEN EXEC
 
 # Ordinary service definitions and aliases do not enable a unit. Dependency
 # links do, even without an activation scriptlet or systemctl invocation.
-for directory in etc/systemd/system usr/lib/systemd/system; do
-    for relation in wants requires; do
+# systemd.unit(5) also enables through .upholds/ and reads user units from
+# /etc/xdg/systemd/user, the default $XDG_CONFIG_DIRS (plan 195).
+for directory in etc/systemd/system usr/lib/systemd/system etc/xdg/systemd/user usr/lib/systemd/user; do
+    for relation in wants requires upholds; do
         followup_case "vapt-enabled-${directory//\//-}-$relation"
         mkdir -p "$PACKAGE/$directory" "$PACKAGE/usr/lib/systemd/system"
         printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
@@ -44,6 +49,99 @@ for directory in etc/systemd/system usr/lib/systemd/system; do
         assert_status "$directory .$relation unit enables service and is refused" 1 "$STATUS"
         vapt_tools_untouched "$directory $relation"
     done
+done
+
+# A unit drop-in that adds a starting dependency enables the unit just as a
+# link does; other drop-ins (environment, limits) stay provisionable. A
+# symlinked drop-in cannot be read here and needs manual review (plan 195).
+for dropin in wants requires bindsto upholds environment symlink; do
+    followup_case "vapt-enabled-dropin-$dropin"
+    mkdir -p "$PACKAGE/usr/lib/systemd/system/multi-user.target.d"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    expected=1
+    case "$dropin" in
+    wants) body='[Unit]\nWants=subject.service\n' ;;
+    requires) body='[Unit]\n  Requires = subject.service\n' ;;
+    bindsto) body='[Unit]\nBindsTo=subject.service\n' ;;
+    upholds) body='[Unit]\nUpholds=subject.service\n' ;;
+    environment) body='[Service]\nEnvironment=SUBJECT_WANTS=1\n'; expected=0 ;;
+    symlink) body='' ;;
+    esac
+    if [[ $dropin == symlink ]]; then
+        ln -s /etc/subject/override.conf "$PACKAGE/usr/lib/systemd/system/multi-user.target.d/subject.conf"
+    else
+        printf '%b' "$body" >"$PACKAGE/usr/lib/systemd/system/multi-user.target.d/subject.conf"
+    fi
+    repack
+    review
+    assert_status "multi-user.target.d drop-in ($dropin) is $( ((expected)) && echo refused || echo provisionable)" "$expected" "$STATUS"
+    vapt_tools_untouched "drop-in $dropin"
+done
+
+# A link that stands in for a directory systemd reads hides that directory's
+# members from the archive listing: a symlinked multi-user.target.d whose
+# target holds Wants=subject.service enables subject as surely as a .wants
+# link. Every link under a systemd root not named like a unit is refused;
+# a unit alias stays provisionable (the loop above).
+for link in usr/lib/systemd/system/multi-user.target.d usr/lib/systemd/user/default.target.d \
+    etc/systemd/system.control usr/local/lib/systemd/system usr/lib/systemd/system/subject.conf; do
+    followup_case "vapt-enabled-dirlink-${link//\//-}"
+    mkdir -p "$PACKAGE/opt/subject/dropins" "$PACKAGE/${link%/*}" "$PACKAGE/usr/lib/systemd/system"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    printf '[Unit]\nWants=subject.service\n' >"$PACKAGE/opt/subject/dropins/subject.conf"
+    repack
+    review
+    assert_status "$link without the link is provisionable" 0 "$STATUS"
+    ln -s /opt/subject/dropins "$PACKAGE/$link"
+    repack
+    review
+    assert_status "$link as a link is refused" 1 "$STATUS"
+    assert_contains "$link refusal names the link" "$OUTPUT" "may hide a unit or drop-in directory $link"
+    vapt_tools_untouched "directory link $link"
+done
+
+# The rule above sees only names below a systemd root. A link AT a root or
+# above one swaps in the whole tree systemd reads there: usr/local/lib/systemd
+# belongs to no package, so pacman creates the link and systemd reads
+# /usr/local/lib/systemd/system/multi-user.target.d/subject.conf at boot.
+for link in usr/local/lib/systemd etc/xdg/systemd usr/share/systemd run/systemd lib/systemd \
+    usr/local/lib etc/xdg; do
+    followup_case "vapt-enabled-rootlink-${link//\//-}"
+    tree=$PACKAGE/opt/subject/dropins
+    [[ $link == */systemd ]] || tree+=/systemd
+    mkdir -p "$tree/system/multi-user.target.d" "$tree/user/default.target.d" "$PACKAGE/${link%/*}" \
+        "$PACKAGE/usr/lib/systemd/system"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    printf '[Unit]\nWants=subject.service\n' >"$tree/system/multi-user.target.d/subject.conf"
+    printf '[Unit]\nWants=subject.service\n' >"$tree/user/default.target.d/subject.conf"
+    repack
+    review
+    assert_status "$link without the link is provisionable" 0 "$STATUS"
+    ln -s /opt/subject/dropins "$PACKAGE/$link"
+    repack
+    review
+    assert_status "$link as a link is refused" 1 "$STATUS"
+    assert_contains "$link refusal names the link" "$OUTPUT" "replaces a systemd unit directory $link"
+    vapt_tools_untouched "root link $link"
+done
+# A link that only maps one systemd root onto another changes nothing systemd
+# reads: filesystem's lib -> usr/lib, which the private -Syuw brings in when
+# filesystem updates, stays provisionable in both spellings. Pointing it
+# anywhere else is refused.
+for target in usr/lib /usr/lib opt/subject; do
+    followup_case "vapt-rootlink-lib-${target//\//-}"
+    mkdir -p "$PACKAGE/usr/lib/systemd/system" "$PACKAGE/opt/subject/systemd"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    ln -s "$target" "$PACKAGE/lib"
+    repack
+    review
+    if [[ $target == opt/subject ]]; then
+        assert_status "lib -> $target is refused" 1 "$STATUS"
+        assert_contains "lib -> $target refusal names the link" "$OUTPUT" "replaces a systemd unit directory lib"
+    else
+        assert_status "lib -> $target is provisionable" 0 "$STATUS"
+    fi
+    vapt_tools_untouched "lib -> $target"
 done
 
 # Pre phases run CURRENT helper bytes; post phases run reviewed replacement

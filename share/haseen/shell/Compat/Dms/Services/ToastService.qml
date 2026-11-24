@@ -13,8 +13,10 @@ Singleton {
     readonly property int levelWarn: 1
     readonly property int levelError: 2
 
+    // "--" ends notify-send's options: a message such as "-3°C outside" is
+    // text, not an unknown option that drops the toast (plan 196).
     function _notify(urgency: string, message: var, details: var): void {
-        const args = ["notify-send", "--app-name=haseen", "--urgency=" + urgency, String(message || "")];
+        const args = ["notify-send", "--app-name=haseen", "--urgency=" + urgency, "--", String(message || "")];
         if (details)
             args.push(String(details));
         Quickshell.execDetached(args);

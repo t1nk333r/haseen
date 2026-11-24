@@ -630,7 +630,7 @@ self_case() { # NAME [logical|physical]
     export LC_ALL=C
     vapt_repos "${VAPT_BASE[@]}" 'extra|nmap|7.99-1|https://nmap.org/'
     local layer=opt/haseen/layers/vapt
-    vapt_installed "haseen-vapt|1-1|https://example.org/haseen||||usr/share/haseen,$layer/metadata.py,$layer/files/stock-hooks.tsv,$layer/files/blackarch-signers.txt"
+    vapt_installed "haseen-vapt|1-1|https://example.org/haseen||||usr/share/haseen,$layer/metadata.py,$layer/files/stock-hooks.tsv,$layer/files/blackarch-signers.txt,$layer/files/oniomarchy-signers.txt,$layer/packages/oniomarchy.tsv"
     vapt_stock
     no_stock_hooks
     unset LANDED_PLAN
@@ -658,25 +658,33 @@ self_review() { # LABEL EXPECTED ARCHIVE...
 self_case vapt-landed-self-unrelated
 landed_archive nmap 7.99-1
 self_review 'SELF unrelated package beside the installed haseen program (control)' 0 "$LANDED_ARCHIVE"
+# The oniomarchy signer pin and admission table are policy too (plan 195):
+# pinned_signers and oniomarchy_admission read them beside the module.
 self_case vapt-landed-self-identical
 landed_archive haseen-vapt 2-1 "opt/haseen/layers/vapt/metadata.py<$SELF_LAYER/metadata.py" \
     "opt/haseen/layers/vapt/files/stock-hooks.tsv<$SELF_LAYER/files/stock-hooks.tsv" \
-    "opt/haseen/layers/vapt/files/blackarch-signers.txt<$SELF_LAYER/files/blackarch-signers.txt" 'usr/share/haseen@>../../opt/haseen'
+    "opt/haseen/layers/vapt/files/blackarch-signers.txt<$SELF_LAYER/files/blackarch-signers.txt" \
+    "opt/haseen/layers/vapt/files/oniomarchy-signers.txt<$SELF_LAYER/files/oniomarchy-signers.txt" \
+    "opt/haseen/layers/vapt/packages/oniomarchy.tsv<$SELF_LAYER/packages/oniomarchy.tsv" 'usr/share/haseen@>../../opt/haseen'
 self_review 'SELF byte-identical program and policy upgrade (control)' 0 "$LANDED_ARCHIVE"
-for change in module-bytes policy-bytes signers-bytes module-link module-removed logical-hop policy-dir-link; do
+for change in module-bytes policy-bytes signers-bytes oniomarchy-pin-bytes admission-bytes module-link module-removed logical-hop policy-dir-link; do
     self_case "vapt-landed-self-$change"
     keep=("opt/haseen/layers/vapt/metadata.py<$SELF_LAYER/metadata.py"
           "opt/haseen/layers/vapt/files/stock-hooks.tsv<$SELF_LAYER/files/stock-hooks.tsv"
           "opt/haseen/layers/vapt/files/blackarch-signers.txt<$SELF_LAYER/files/blackarch-signers.txt"
-          'usr/share/haseen@>../../opt/haseen')
+          'usr/share/haseen@>../../opt/haseen'
+          "opt/haseen/layers/vapt/files/oniomarchy-signers.txt<$SELF_LAYER/files/oniomarchy-signers.txt"
+          "opt/haseen/layers/vapt/packages/oniomarchy.tsv<$SELF_LAYER/packages/oniomarchy.tsv")
     case "$change" in
+    oniomarchy-pin-bytes) keep[4]='opt/haseen/layers/vapt/files/oniomarchy-signers.txt=0000000000000000000000000000000000000000' ;;
+    admission-bytes) keep[5]=$'opt/haseen/layers/vapt/packages/oniomarchy.tsv=attacker\tcandidate\tattacker' ;;
     module-bytes) keep[0]='opt/haseen/layers/vapt/metadata.py=# changed root program' ;;
     policy-bytes) keep[1]=$'opt/haseen/layers/vapt/files/stock-hooks.tsv=# changed stock hook policy' ;;
     signers-bytes) keep[2]='opt/haseen/layers/vapt/files/blackarch-signers.txt=0000000000000000000000000000000000000000' ;;
     module-link) keep[0]='opt/haseen/layers/vapt/metadata.py@>../../../vapt-other.py' ;;
     module-removed) unset 'keep[0]' ;;
     logical-hop) keep[3]='usr/share/haseen@>../../opt/haseen-other' ;;
-    policy-dir-link) keep[1]='opt/haseen/layers/vapt/files@>../../../vapt-policy'; unset 'keep[2]' ;;
+    policy-dir-link) keep[1]='opt/haseen/layers/vapt/files@>../../../vapt-policy'; unset 'keep[2]' 'keep[4]' ;;
     esac
     landed_archive haseen-vapt 2-1 "${keep[@]}"
     self_review "SELF unauthenticated $change change to the program haseen runs as root is refused" 1 "$LANDED_ARCHIVE"
@@ -821,7 +829,7 @@ auth_policy_case() {
     vapt_root
     export LC_ALL=C
     vapt_repos "${VAPT_BASE[@]}" 'extra|nmap|7.99-1|https://nmap.org/'
-    vapt_installed "haseen-vapt|1-1|https://example.org/haseen||||$AUTH_LOGICAL/metadata.py,$AUTH_LOGICAL/files/stock-hooks.tsv,$AUTH_LOGICAL/files/blackarch-signers.txt,$AUTH_PHYSICAL/metadata.py,$AUTH_PHYSICAL/files/stock-hooks.tsv,$AUTH_PHYSICAL/files/blackarch-signers.txt"
+    vapt_installed "haseen-vapt|1-1|https://example.org/haseen||||$AUTH_LOGICAL/metadata.py,$AUTH_LOGICAL/files/stock-hooks.tsv,$AUTH_LOGICAL/files/blackarch-signers.txt,$AUTH_PHYSICAL/metadata.py,$AUTH_PHYSICAL/files/stock-hooks.tsv,$AUTH_PHYSICAL/files/blackarch-signers.txt,$AUTH_LOGICAL/files/oniomarchy-signers.txt,$AUTH_PHYSICAL/files/oniomarchy-signers.txt"
     vapt_stock
     no_stock_hooks
     # No stock hook remains, so the audit consumes the module's own physical
@@ -831,7 +839,7 @@ auth_policy_case() {
     landed_facts
     mkdir -p "$ROOT/$AUTH_LOGICAL/files" "$ROOT/$AUTH_PHYSICAL/files"
     cp "$VAPT_LAYER/metadata.py" "$ROOT/$AUTH_PHYSICAL/metadata.py"
-    for f in stock-hooks.tsv blackarch-signers.txt; do
+    for f in stock-hooks.tsv blackarch-signers.txt oniomarchy-signers.txt; do
         cp "$VAPT_LAYER/files/$f" "$ROOT/$AUTH_PHYSICAL/files/$f"
         cp "$VAPT_LAYER/files/$f" "$ROOT/$AUTH_LOGICAL/files/$f"
     done
@@ -844,7 +852,9 @@ auth_policy_case() {
                "$AUTH_LOGICAL/files/blackarch-signers.txt<$ROOT/$AUTH_LOGICAL/files/blackarch-signers.txt"
                "$AUTH_PHYSICAL/metadata.py<$ROOT/$AUTH_PHYSICAL/metadata.py"
                "$AUTH_PHYSICAL/files/stock-hooks.tsv<$ROOT/$AUTH_PHYSICAL/files/stock-hooks.tsv"
-               "$AUTH_PHYSICAL/files/blackarch-signers.txt<$ROOT/$AUTH_PHYSICAL/files/blackarch-signers.txt")
+               "$AUTH_PHYSICAL/files/blackarch-signers.txt<$ROOT/$AUTH_PHYSICAL/files/blackarch-signers.txt"
+               "$AUTH_LOGICAL/files/oniomarchy-signers.txt<$ROOT/$AUTH_LOGICAL/files/oniomarchy-signers.txt"
+               "$AUTH_PHYSICAL/files/oniomarchy-signers.txt<$ROOT/$AUTH_PHYSICAL/files/oniomarchy-signers.txt")
 }
 AUTH_POLICY_CHANGE="$AUTH_PHYSICAL/files/stock-hooks.tsv=# changed physical stock hook policy"
 
@@ -862,6 +872,13 @@ auth_policy_case vapt-auth-policy-target-physical-changed
 AUTH_KEEP[4]="$AUTH_POLICY_CHANGE"
 landed_archive haseen-vapt 2-1 "${AUTH_KEEP[@]}"
 auth_review 'SELF-POLICY-TARGET unauthenticated change to the consumed physical stock-hook policy is refused' 1 "$AUTH_META" "$LANDED_ARCHIVE"
+
+# pinned_signers reads the oniomarchy pin beside the resolved module too
+# (plan 195): a physical-only change is refused like the stock-hook one.
+auth_policy_case vapt-auth-policy-target-physical-pin-changed
+AUTH_KEEP[7]="$AUTH_PHYSICAL/files/oniomarchy-signers.txt=0000000000000000000000000000000000000000"
+landed_archive haseen-vapt 2-1 "${AUTH_KEEP[@]}"
+auth_review 'SELF-POLICY-TARGET unauthenticated change to the consumed physical oniomarchy signer pin is refused' 1 "$AUTH_META" "$LANDED_ARCHIVE"
 
 auth_policy_case vapt-auth-policy-target-base-update
 AUTH_KEEP[4]="$AUTH_POLICY_CHANGE"
@@ -901,10 +918,13 @@ done
 AUTH_SELF_REL=opt/haseen/layers/vapt
 auth_self_case() {
     self_case "$1"
-    chmod 0644 "$SELF_LAYER/metadata.py" "$SELF_LAYER/files/stock-hooks.tsv" "$SELF_LAYER/files/blackarch-signers.txt"
+    chmod 0644 "$SELF_LAYER/metadata.py" "$SELF_LAYER/files/stock-hooks.tsv" "$SELF_LAYER/files/blackarch-signers.txt" \
+        "$SELF_LAYER/files/oniomarchy-signers.txt" "$SELF_LAYER/packages/oniomarchy.tsv"
     landed_archive haseen-vapt 2-1 "$AUTH_SELF_REL/metadata.py<$SELF_LAYER/metadata.py" \
         "$AUTH_SELF_REL/files/stock-hooks.tsv<$SELF_LAYER/files/stock-hooks.tsv" \
         "$AUTH_SELF_REL/files/blackarch-signers.txt<$SELF_LAYER/files/blackarch-signers.txt" \
+        "$AUTH_SELF_REL/files/oniomarchy-signers.txt<$SELF_LAYER/files/oniomarchy-signers.txt" \
+        "$AUTH_SELF_REL/packages/oniomarchy.tsv<$SELF_LAYER/packages/oniomarchy.tsv" \
         'usr/share/haseen@>../../opt/haseen'
 }
 

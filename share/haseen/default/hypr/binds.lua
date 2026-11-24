@@ -333,10 +333,17 @@ local function usable_area(mon)
   if not scale or scale == 0 then
     scale = 1
   end
+  -- Width and height are the panel's own pixels, before rotation: a quarter
+  -- turn (the odd transforms) swaps them on screen, as in qconsole.lua's fit()
+  -- (plan 190).
+  local width, height = mon.width, mon.height
+  if (mon.transform or 0) % 2 == 1 then
+    width, height = height, width
+  end
   return math.floor(mon.x + left),
     math.floor(mon.y + top),
-    math.floor(mon.width / scale - left - (reserved.right or 0)),
-    math.floor(mon.height / scale - top - (reserved.bottom or 0))
+    math.floor(width / scale - left - (reserved.right or 0)),
+    math.floor(height / scale - top - (reserved.bottom or 0))
 end
 
 -- offset(ANCHOR, SLACK) -> how far from the left or top edge to start.

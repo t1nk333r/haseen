@@ -82,9 +82,13 @@ key() {
 
     local dir="${XDG_RUNTIME_DIR:-/tmp}/haseen"
     local held_file="$dir/ydotool-$HYPRLAND_INSTANCE_SIGNATURE.held" lock
-    mkdir -p "$dir"
-    exec {lock}>>"$held_file.lock"
-    flock "$lock"
+    # A dry run creates nothing, not even the directory or the lock (plan
+    # 196): it reads the held keys a real run left, unlocked.
+    if ! $DRY_RUN; then
+        mkdir -p "$dir"
+        exec {lock}>>"$held_file.lock"
+        flock "$lock"
+    fi
 
     local -A held=()
     local code

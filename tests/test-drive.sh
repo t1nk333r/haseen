@@ -19,8 +19,8 @@ stub lsblk 'case "$*" in
         printf "disk nvme0n1\npart nvme0n1p1 vfat /boot\npart nvme0n1p2 crypto_LUKS\n" ;;
     "-prno NAME,FSTYPE")
         printf "/dev/nvme0n1\n/dev/nvme0n1p1 vfat\n/dev/nvme0n1p2 crypto_LUKS\n" ;;
-    "-prno NAME,FSTYPE /dev/nvme0n1p1") printf "/dev/nvme0n1p1 vfat\n" ;;
-    "-prno NAME,FSTYPE /dev/nvme0n1p2") printf "/dev/nvme0n1p2 crypto_LUKS\n" ;;
+    "-prno NAME,FSTYPE,FSVER /dev/nvme0n1p1") printf "/dev/nvme0n1p1 vfat FAT32\n" ;;
+    "-prno NAME,FSTYPE,FSVER /dev/nvme0n1p2") printf "/dev/nvme0n1p2 crypto_LUKS %s\n" "${LUKS_VERSION:-2}" ;;
     "-dpno NAME,TYPE") printf "/dev/zram0 disk\n/dev/nvme0n1 disk\n" ;;
     *) ;;
 esac'
@@ -50,3 +50,7 @@ capture haseen drive password --dry-run
 assert_dry_pure "drive password dry run" "$OUTPUT"
 assert_contains "the dry run plans the key change on the only container" "$OUTPUT" "cryptsetup luksChangeKey --pbkdf argon2id --iter-time 2000 /dev/nvme0n1p2"
 assert_not_contains "no passphrase is read in a dry run" "$OUTPUT" "New passphrase"
+capture env LUKS_VERSION=1 haseen drive password /dev/nvme0n1p2 --dry-run
+assert_status "a LUKS1 container dry run" 0 "$STATUS"
+assert_contains "LUKS1 keeps its PBKDF2 slots (plan 192)" "$OUTPUT" "cryptsetup luksChangeKey --iter-time 2000 /dev/nvme0n1p2"
+assert_not_contains "argon2id is never asked of LUKS1" "$OUTPUT" "argon2id"
