@@ -599,6 +599,25 @@ SYSTEMD_UNIT_SUFFIXES = ('.service', '.socket', '.device', '.mount', '.automount
 SYSTEMD_DEPENDENCY = re.compile(r'^[ \t]*(?:Wants|Requires|BindsTo|Upholds|OnFailure|OnSuccess)[ \t]*=', re.M)
 
 
+def systemd_ancestor_link(name, target):
+    """True when a link named NAME (pointing at TARGET) is a systemd root or
+    sits above one (usr/local/lib/systemd, usr/local/lib, etc/xdg) and so
+    could swap in a directory tree whose units and drop-ins the archive never
+    lists. A link that maps every root below it onto another root changes
+    nothing systemd reads and is allowed: filesystem's lib -> usr/lib, which
+    the private -Syuw can bring in, makes lib/systemd/ the usr/lib/systemd/
+    root whose members are reviewed under either spelling."""
+    below = [root for root in SYSTEMD_ROOTS if root.startswith(name + '/')]
+    if not below:
+        return False
+    parent = name.rpartition('/')[0]
+    base = os.path.normpath(target.lstrip('/') if target.startswith('/')
+                            else os.path.join(parent, target))
+    if not target or base in ('.', '..') or base.startswith('../'):
+        return True
+    return any(base + '/' + root[len(name) + 1:] not in SYSTEMD_ROOTS for root in below)
+
+
 def emit_safe(*fields):
     """True when no field could break a tab-separated row or carry a
     terminal control sequence into emitted metadata."""
@@ -1283,10 +1302,15 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for filename in filenames:
         _, _, kinds, contents = snapshot(filename)
         names = {}
-        for name, (kind, _, hardlink, raw, *_) in kinds.items():
+        for name, (kind, symlink, hardlink, raw, *_) in kinds.items():
             member = raw + ('/' if kind == stat.S_IFDIR and not raw.endswith('/') else '')
             if name.startswith('/') or '..' in Path(name).parts:
                 raise ValueError('unsafe archive member')
+            # The root rules below see only names under a root; a link AT a
+            # root or above one (usr/local/lib/systemd -> /opt/pkg/units)
+            # replaces the whole tree systemd reads there.
+            if kind == stat.S_IFLNK and systemd_ancestor_link(name.rstrip('/'), symlink or ''):
+                raise ValueError('incoming link replaces a systemd unit directory ' + name)
             if name.startswith(SYSTEMD_ROOTS):
                 parts = Path(name).parts
                 if (any(p.endswith(SYSTEMD_ENABLING) for p in parts[:-1])

@@ -18,6 +18,8 @@ repack() {
     [[ ! -f $PACKAGE/.INSTALL ]] || members+=(.INSTALL)
     [[ ! -d $PACKAGE/etc ]] || members+=(etc)
     [[ ! -d $PACKAGE/opt ]] || members+=(opt)
+    [[ ! -e $PACKAGE/run ]] || members+=(run)
+    [[ ! -e $PACKAGE/lib ]] || members+=(lib)
     tar -czf "$ARCHIVE" -C "$PACKAGE" "${members[@]}"
 }
 review() { capture python3 "$VAPT_META" audit "$ARCHIVE" --root "$ROOT"; }
@@ -96,6 +98,50 @@ for link in usr/lib/systemd/system/multi-user.target.d usr/lib/systemd/user/defa
     assert_status "$link as a link is refused" 1 "$STATUS"
     assert_contains "$link refusal names the link" "$OUTPUT" "may hide a unit or drop-in directory $link"
     vapt_tools_untouched "directory link $link"
+done
+
+# The rule above sees only names below a systemd root. A link AT a root or
+# above one swaps in the whole tree systemd reads there: usr/local/lib/systemd
+# belongs to no package, so pacman creates the link and systemd reads
+# /usr/local/lib/systemd/system/multi-user.target.d/subject.conf at boot.
+for link in usr/local/lib/systemd etc/xdg/systemd usr/share/systemd run/systemd lib/systemd \
+    usr/local/lib etc/xdg; do
+    followup_case "vapt-enabled-rootlink-${link//\//-}"
+    tree=$PACKAGE/opt/subject/dropins
+    [[ $link == */systemd ]] || tree+=/systemd
+    mkdir -p "$tree/system/multi-user.target.d" "$tree/user/default.target.d" "$PACKAGE/${link%/*}" \
+        "$PACKAGE/usr/lib/systemd/system"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    printf '[Unit]\nWants=subject.service\n' >"$tree/system/multi-user.target.d/subject.conf"
+    printf '[Unit]\nWants=subject.service\n' >"$tree/user/default.target.d/subject.conf"
+    repack
+    review
+    assert_status "$link without the link is provisionable" 0 "$STATUS"
+    ln -s /opt/subject/dropins "$PACKAGE/$link"
+    repack
+    review
+    assert_status "$link as a link is refused" 1 "$STATUS"
+    assert_contains "$link refusal names the link" "$OUTPUT" "replaces a systemd unit directory $link"
+    vapt_tools_untouched "root link $link"
+done
+# A link that only maps one systemd root onto another changes nothing systemd
+# reads: filesystem's lib -> usr/lib, which the private -Syuw brings in when
+# filesystem updates, stays provisionable in both spellings. Pointing it
+# anywhere else is refused.
+for target in usr/lib /usr/lib opt/subject; do
+    followup_case "vapt-rootlink-lib-${target//\//-}"
+    mkdir -p "$PACKAGE/usr/lib/systemd/system" "$PACKAGE/opt/subject/systemd"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    ln -s "$target" "$PACKAGE/lib"
+    repack
+    review
+    if [[ $target == opt/subject ]]; then
+        assert_status "lib -> $target is refused" 1 "$STATUS"
+        assert_contains "lib -> $target refusal names the link" "$OUTPUT" "replaces a systemd unit directory lib"
+    else
+        assert_status "lib -> $target is provisionable" 0 "$STATUS"
+    fi
+    vapt_tools_untouched "lib -> $target"
 done
 
 # Pre phases run CURRENT helper bytes; post phases run reviewed replacement

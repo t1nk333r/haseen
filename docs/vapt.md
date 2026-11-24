@@ -128,10 +128,14 @@ that adds `Wants=`, `Requires=`, `BindsTo=`, `Upholds=`, `OnFailure=` or
 directory, a link is accepted only when it is named like a unit (an alias or
 a mask). Any other link, such as a `multi-user.target.d`, `system.control` or
 `/usr/local/lib/systemd/system` link to a directory elsewhere, could hide
-drop-ins or units the archive never lists, so it is refused. Replacement or
-conflict removals, missing old file inventories, opaque helpers and relevant
-backup/NoExtract/NoUpgrade ambiguities require manual review and are reported
-unsupported; NoUpgrade-protected dropped hooks are still audited.
+drop-ins or units the archive never lists, so it is refused. So is a link
+at a systemd directory or above one (`/usr/local/lib/systemd`,
+`/usr/local/lib`, `/etc/xdg`), unless it maps each systemd directory below it
+onto another one, as the filesystem package's `/lib -> usr/lib` does.
+Replacement or conflict removals, missing old file inventories, opaque
+helpers and relevant backup/NoExtract/NoUpgrade ambiguities require manual
+review and are reported unsupported; NoUpgrade-protected dropped hooks are
+still audited.
 
 Hook matching follows libalpm's ordered targets and transaction-wide file
 events, including ordered `NoExtract` exceptions. Hook grammar is validated

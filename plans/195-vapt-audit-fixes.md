@@ -76,7 +76,15 @@ and the rest: an alias or a mask). A link such as
 drop-ins behind it from the archive listing, and systemd follows it at boot;
 `etc/systemd/system.control` and `usr/local/lib/systemd/system` (neither
 normally exists, so pacman can create the link) do the same for whole unit
-directories.
+directories. After the second review, a link at a systemd root or above one
+(`usr/local/lib/systemd`, `etc/xdg/systemd`, `usr/share/systemd`,
+`run/systemd`, `lib/systemd`, `usr/local/lib`, `etc/xdg`) is refused too
+(`systemd_ancestor_link` in `metadata.py`): the rules above see only names
+below a root, so such a link swapped in a whole tree of units and drop-ins.
+A link that maps every root below it onto another root is still accepted:
+filesystem's `lib -> usr/lib` (`pacman -Ql filesystem` lists `/lib`), which
+the private `-Syuw` (`pacman.sh:483`) brings in whenever filesystem updates,
+makes `lib/systemd/` the `usr/lib/systemd/` root.
 
 **Test.** `tests/test-vapt-followups.sh`: the link loop covers
 `etc/xdg/systemd/user` and `usr/lib/systemd/user` with `wants`, `requires`
@@ -87,14 +95,22 @@ the link and refuses it with a link at
 `usr/lib/systemd/system/multi-user.target.d`,
 `usr/lib/systemd/user/default.target.d`, `etc/systemd/system.control`,
 `usr/local/lib/systemd/system` or a top-level `subject.conf`, whose target
-`opt/subject/dropins/subject.conf` holds `Wants=subject.service`.
+`opt/subject/dropins/subject.conf` holds `Wants=subject.service`. The
+root-link loop does the same for a link at each ancestor listed above, to a
+tree whose `system/multi-user.target.d/subject.conf` and
+`user/default.target.d/subject.conf` hold `Wants=subject.service`; a `lib`
+link to `usr/lib` or `/usr/lib` stays provisionable and one to `opt/subject`
+is refused.
 
 **Rejected.** `PartOf=` and `Requisite=` (they do not start the other
 unit); refusing every drop-in (packages ship harmless ones for limits and
 environment); refusing only links whose name ends in `.d` (the review's
 first suggestion), which leaves `system.control` and
 `usr/local/lib/systemd/system` open; refusing every link (unit aliases and
-masks are ordinary).
+masks are ordinary); refusing every link above a root without the mapping
+exception (the second review's suggestion), which would refuse the
+`filesystem` package's `lib -> usr/lib` and so every VAPT run that meets a
+filesystem update.
 
 ## 3. A selected tool could end up recorded as a dependency
 
@@ -324,6 +340,9 @@ From the worktree's real path through the hermetic wrapper:
 - After the first review round (below): `tools/lint.sh` lint OK;
   `tests/run.sh --affected 9a9e82ab` 36 test files, 6607/6607;
   `tools/check-docs.sh` OK.
+- After the second review round: `tools/lint.sh` lint OK;
+  `tests/run.sh --affected 9a9e82ab` 36 test files, 6642/6642;
+  `tools/check-docs.sh` OK.
 
 ## Review
 
@@ -349,4 +368,20 @@ changes, with two should-fix findings and one nit:
   approval checks fail (268/270).
 - **Nit: docs lines.** The `docs/vapt.md` paragraphs this plan touched are
   re-wrapped, and the `inspect CERT` parenthetical moved after its object.
+
+The second round (an independent Sonnet review of the fixed head) asked for
+changes with one should-fix finding:
+
+- **A link above a systemd root bypassed the link rule.** Every root ends in
+  `/`, so a link named exactly `usr/local/lib/systemd` (owned by no package)
+  pointing at a tree with `system/multi-user.target.d/subject.conf`
+  (`Wants=subject.service`) matched no root and the audit called it safe; so
+  did `etc/xdg/systemd`, `usr/share/systemd`, `run/systemd` and
+  `lib/systemd`. Fixed as section 2 now describes: a link at a root or above
+  one is refused. The review suggested refusing every such link; the
+  `filesystem` package's `lib -> usr/lib` is one, and the private `-Syuw`
+  installs filesystem updates, so a link that maps each root below it onto
+  another root stays accepted. The root-link loop fails on the previous head
+  (125/141: every new refusal, including `lib -> opt/subject`) and passes
+  with the rule (141/141).
 
