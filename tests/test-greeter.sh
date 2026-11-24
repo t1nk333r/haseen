@@ -166,6 +166,7 @@ assert_contains "pointing greetd at it" "$OUTPUT" "command = \"$tree/bin/haseen-
 root_stat off
 capture haseen setup greeter autologin t1nk33r --dry-run --yes
 assert_status "autologin from a checkout with the haseen greeter is refused" 1 "$STATUS"
+assert_contains "naming the way back that works from here" "$OUTPUT" "haseen setup greeter tuigreet works from here"
 assert_not_contains "and plans nothing" "$OUTPUT" "DRYRUN:"
 rm -f "$sysroot/etc/haseen/greeter"
 

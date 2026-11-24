@@ -534,10 +534,10 @@ ShellRoot {
         property var actions: []
     }
     Component { id: fakeNote; FakeNote {} }
-    function card(icon, appName, action) {
+    function card(icon, appName, action, image) {
         const c = Qt.createComponent(Paths.fileUrl(Quickshell.shellDir + "/plugins/haseen.notifications/NotificationCard.qml"));
         if (c.status !== Component.Ready) { console.log("CARD-ERROR " + c.errorString()); return null; }
-        const n = fakeNote.createObject(probe, { appName: appName, appIcon: icon,
+        const n = fakeNote.createObject(probe, { appName: appName, appIcon: icon, image: image || "",
             actions: [{ identifier: "default", text: "open", invoke: () => {} }, { identifier: "a1", text: action, invoke: () => {} }] });
         return c.createObject(probe, { width: 400, notification: n });
     }
@@ -583,6 +583,9 @@ QML
                 r.urlIcon = c ? c.iconSource : null;
                 r.fileIcon = probe.card("file:///usr/share/icons/x.png", "a", "b").iconSource;
                 r.pathIcon = probe.card("/usr/share/icons/x.png", "a", "b").iconSource;
+                r.urlImage = probe.card("", "a", "b", "https://tracker.invalid/i.png").imageSource;
+                r.pathImage = probe.card("", "a", "b", "/tmp/avatar.png").imageSource;
+                r.dataImage = probe.card("", "a", "b", "image://qsimage/1/2").imageSource;
                 // While the launcher places the terminals, focus moves by design.
                 ss._windowEvent("openwindow", "abc1,special:screensaver-DP-1,org.haseen.screensaver,ttfx");
                 ss._windowEvent("activewindow", "firefox,Mozilla Firefox");
@@ -621,6 +624,9 @@ QML
         assert_not_contains "card: an https app icon is never loaded" "$(get .urlIcon)" "tracker.invalid"
         assert_eq "card: a file:// app icon is" '"file:///usr/share/icons/x.png"' "$(get .fileIcon)"
         assert_eq "card: so is an absolute path, as a file URL" '"file:///usr/share/icons/x.png"' "$(get .pathIcon)"
+        assert_eq "card: an https image hint is never loaded" '""' "$(get .urlImage)"
+        assert_eq "card: an image-path is, as a file URL" '"file:///tmp/avatar.png"' "$(get .pathImage)"
+        assert_eq "card: image-data, served by Quickshell, is" '"image://qsimage/1/2"' "$(get .dataImage)"
         sleep 0.3
         log="$(cat "$SANDBOX/screensaver.log" 2>/dev/null || true)"
         assert_eq "screensaver: focus elsewhere, once the launcher is done and while it shows, asks once to close" \

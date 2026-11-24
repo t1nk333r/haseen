@@ -43,7 +43,7 @@ EOF
 require_trusted_greeter() {
     local why
     why="$(greeter_trusted)" ||
-        die "the graphical greeter must come from an installed haseen only root can change: $why (install haseen, then run its haseen setup greeter)"
+        die "the graphical greeter must come from an installed haseen only root can change: $why (install haseen, then run its haseen setup greeter; haseen setup greeter tuigreet works from here)"
 }
 
 parse_common_flags "$@"

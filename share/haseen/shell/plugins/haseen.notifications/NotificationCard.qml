@@ -31,6 +31,18 @@ Rectangle {
             return "file://" + icon;
         return icon.startsWith("file://") ? icon : Quickshell.iconPath(icon, true);
     }
+    // The image hint, by the same rule: Quickshell serves image-data as an
+    // image:// URL it owns, but image-path is the sender's string, passed on.
+    readonly property string imageSource: {
+        const src = notification ? String(notification.image) : "";
+        if (src === "")
+            return "";
+        if (src.startsWith("/"))
+            return "file://" + src;
+        if (src.startsWith("file://") || src.startsWith("image://"))
+            return src;
+        return src.indexOf("://") >= 0 ? "" : Quickshell.iconPath(src, true);
+    }
 
     // Omarchy's notification card (shell/plugins/notifications): 12 px sides,
     // 10 px top and bottom, the [notifications] surface and its 2 px border.
@@ -149,7 +161,7 @@ Rectangle {
 
                 width: visible ? Theme.fontSize * 3 : 0
                 height: width
-                source: card.notification ? card.notification.image : ""
+                source: card.imageSource
                 visible: source.toString() !== "" && status === Image.Ready
                 sourceSize.width: Theme.fontSize * 3
                 sourceSize.height: Theme.fontSize * 3

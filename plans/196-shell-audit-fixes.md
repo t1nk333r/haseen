@@ -205,12 +205,19 @@ the user takes the pager out of `services`.
 path (as a `file://` URL) or a `file://` URL, and resolves anything else as an
 icon theme name. While testing, a bare path turned out never to load:
 `IconImage` resolved it inside `qrc:` ("Cannot open:
-qrc:/usr/share/icons/x.png"), hence the `file://` prefix.
+qrc:/usr/share/icons/x.png"), hence the `file://` prefix. After review, the
+card's `Image` reads `imageSource`, which applies the same rule to
+`notification.image` and also lets through Quickshell's own `image://` URL.
+Quickshell reads the `image-path` and `image_path` hints (both strings are in
+`/usr/bin/quickshell`, next to `qsimage`, the provider it serves `image-data`
+from), and a sender writes that string.
 
 **Tests.** `tests/test-ambient.sh` creates the real card in Quickshell with a
 stand-in notification: the app name and an action label carrying `<img>`
 markup are plain text, an `https` icon is never the source, a `file://` icon
-and a bare path are (as `file:///usr/share/icons/x.png`).
+and a bare path are (as `file:///usr/share/icons/x.png`). For the image, an
+`https` hint gives no source, an absolute path becomes a `file://` URL and an
+`image://qsimage/` URL stays as it is.
 
 ## 8. The ydotool shim's dry run created files
 
@@ -243,3 +250,21 @@ a notify-send that, like GOption, fails on an unknown option before `--`:
 `dms ipc call toast warn "--- connection lost ---"` shows, and so does
 `ToastService.showInfo("-3 C outside", "--- connection lost ---")` in
 Quickshell; the startup gate's title follows `--`.
+
+## Review
+
+An independent Sonnet review of the first head approved it with three nits.
+
+- The card's `Image` still took `notification.image` unchecked. Quickshell
+  passes the `image-path` hint through, so a sender could name a remote
+  image. Fixed: `imageSource` applies the `iconSource` rule (finding 7).
+- Other notify-send callers still put user text first with no `--`
+  (`bin/haseen-reminder-set:51`, `share/haseen/lib/gestures.sh:324`, the
+  toggle scripts). Deferred. These callers are outside this group's
+  findings, and about 36 files call notify-send, many of them owned by groups
+  fixing in parallel. A follow-up should add `--` everywhere and lint for it.
+- With the haseen greeter chosen, `autologin off` from a checkout is refused,
+  and the error only talked about installing. The refusal stays, because the
+  rewrite names the greeter command. The error now adds that
+  `haseen setup greeter tuigreet` works from a checkout, and
+  `tests/test-greeter.sh` checks for that text.
