@@ -3,6 +3,7 @@
 # haseen:covers share/haseen/shell/lib/plugin.sh share/haseen/shell/plugin.schema.json
 # haseen:covers share/haseen/shell/plugins/haseen.{agents,background,imagepicker}/**
 # haseen:covers tests/fixtures/agents/** share/haseen/shell/plugins/*/manifest.json
+# haseen:covers share/haseen/libexec/agent-usage-*
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -156,6 +157,12 @@ assert_eq "both sections are off by default" "false false" \
     "$(jq -r '[.settings.accounts.default, .settings.usage.default] | map(tostring) | join(" ")' "$PLUGINS/haseen.agents/manifest.json")"
 assert_contains "the account list runs only when its section is on" "$ag" "if (showAccounts)"
 assert_contains "usage records are read as files, in haseen's state" "$ag" 'Paths.userState + "/agents/usage/"'
+# Every collector haseen ships writes a record the panel draws (plan 198:
+# plan 124's cpa.json was written but never read).
+usage_model="$(grep -F 'model: root.showUsage' <<<"$ag")"
+for collector in "$HASEEN_PATH"/libexec/agent-usage-*; do
+    assert_contains "the panel reads ${collector##*/agent-usage-}'s usage record" "$usage_model" "\"${collector##*/agent-usage-}\""
+done
 assert_eq "the panel never runs a usage collector" "" \
     "$(grep -nHE 'agent-usage|omarchy-' "$PLUGINS/haseen.agents"/*.qml | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
 assert_contains "r takes a new snapshot" "$ag" "Qt.Key_R"

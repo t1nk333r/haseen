@@ -1,13 +1,15 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-agent-crash bin/haseen-setup-default bin/haseen-webapp-install
 # haseen:covers bin/haseen-webapp-remove tests/fixtures/webapp/**
+# haseen:covers share/haseen/omarchy/bin/omarchy-agent bin/haseen-terminal-run
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # Web apps and agent crash: `haseen webapp install` writes a launcher that runs
 # the default chromium-family browser in app mode with a fetched icon, refuses a
 # browser without an app mode, `haseen webapp remove` deletes launcher and icon,
-# and `haseen agent crash` builds its report without starting an agent.
+# and `haseen agent crash` builds its report and hands it to omarchy-agent,
+# which starts the agent in a terminal (stubs only).
 
 SYSROOT="$FIXTURES/webapp"
 PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -118,7 +120,20 @@ assert_contains "report has the binary" "$OUTPUT" "binary:   /usr/bin/nautilus"
 assert_contains "report has the signal" "$OUTPUT" "signal:   SIGSEGV"
 assert_contains "report has the crash time from coredumpctl" "$OUTPUT" "time:     Mon 2026-10-05 11:22:33 CEST"
 assert_contains "report points at the skill" "$OUTPUT" "diagnose-crash"
-assert_contains "dry-run plans the agent" "$OUTPUT" "DRYRUN: claude --prompt"
+# The report goes through omarchy-agent, which knows each agent's prompt
+# syntax, in a terminal window (plan 198): no agent takes --prompt.
+assert_contains "dry-run plans claude with the report after --" "$OUTPUT" "claude --permission-mode auto -- A process crashed on this machine"
+assert_contains "in a terminal window" "$OUTPUT" "DRYRUN: foot -e "
+assert_not_contains "never as --prompt" "$OUTPUT" "claude --prompt"
+stub codex 'echo "AGENT-RAN: $*"'
+capture env HASEEN_AGENT=codex haseen agent crash 1516893 nautilus /usr/bin/nautilus SIGSEGV --dry-run
+assert_contains "codex gets its own syntax" "$OUTPUT" "codex --approve-for-me -- A process crashed on this machine"
+# A click on the notification: the terminal runs the agent with the report.
+stub foot 'shift; "$@"'
+capture env HASEEN_AGENT=claude TERMINAL=foot haseen agent crash 1516893 nautilus /usr/bin/nautilus SIGSEGV
+assert_status "a real run starts the agent" 0 "$STATUS"
+assert_contains "the agent gets the report as its prompt" "$OUTPUT" "AGENT-RAN: --permission-mode auto -- A process crashed on this machine"
+assert_contains "naming the process" "$OUTPUT" "process:  nautilus"
 
 capture env HASEEN_AGENT=claude haseen agent crash not-a-pid --dry-run
 assert_status "a non-PID is refused" 1 "$STATUS"
