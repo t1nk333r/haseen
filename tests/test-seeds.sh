@@ -51,7 +51,10 @@ assert_contains "English is in the group" "$profile" "Name=keyboard-us"
 assert_contains "Arabic is in the group" "$profile" "Name=keyboard-ara"
 assert_contains "the group starts in English" "$profile" "DefaultIM=keyboard-us"
 config="$(cat "$CONFIG/fcitx5/config")"
-assert_contains "Control+space switches script" "$config" $'[Hotkey/TriggerKeys]\n0=Control+space'
+assert_contains "Super+i switches script" "$config" $'[Hotkey/TriggerKeys]\n0=Super+i'
+# Control+space is the herdr and tmux prefix (plan 190); tests/test-mux.sh and
+# tests/test-keybinds.sh check the key against them and against Hyprland.
+assert_not_contains "the switch key leaves the multiplexers' Control+space alone" "$config" "=Control+space"
 assert_not_contains "the switch key does not take Hyprland's SUPER+SPACE" "$config" "Super+space"
 assert_contains "fcitx5 keeps Hyprland's XKB layout" "$(cat "$CONFIG/fcitx5/conf/xcb.conf")" \
     "Allow Overriding System XKB Settings=False"

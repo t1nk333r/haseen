@@ -21,7 +21,7 @@ file changes in the same commit.
 | 6 | local AI | `layers/ai` (Ollama/llama.cpp bound to loopback only) + the `haseen.ai` panel plugin |
 | 7 | Arch / CachyOS | installer (CachyOS, Arch); NixOS is detected and refused |
 | 8 | Secure Boot for Windows dual boot | `layers/secureboot` |
-| 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape |
+| 9 | CapsLock as a hyper key (opt-in) | `haseen setup keyd on`: keyd from `extra`, `share/haseen/default/keyd/default.conf` → `/etc/keyd/default.conf` (a different one is backed up), hold = `SUPER + SHIFT + ALT + CTRL`, tap = Escape, CapsLock under a held RightAlt (keyd's `[altgr]` layer) = Caps Lock |
 | 10 | Brightness (plan 077) | `haseen brightness`: backlights and `*::kbd_backlight` via brightnessctl (logind), DDC/CI monitors via ddcutil (bus map cached in `$XDG_CACHE_HOME/haseen/ddc-displays.tsv`); `haseen setup ddc on` (opt-in) installs ddcutil and loads i2c-dev; the `haseen.display` panel (off) slides each device |
 | 11 | optional VAPT workstation environment, no AUR or tool execution | `layers/vapt`, 25 explicit group manifests and owned native environments (plans 007, 087) |
 
