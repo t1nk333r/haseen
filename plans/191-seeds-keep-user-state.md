@@ -183,7 +183,7 @@ keeps the record for a link it cannot resolve inside the repo
 (`rc_object` in `bin/haseen-setup-dotfiles`, tested in
 `tests/test-dotfiles.sh`). The new checks fail on the code before the round
 (6 failures across the two files: the four "links: …" checks and two of the
-picker's, run against `b5fd6da9`'s `bin/haseen-setup-dotfiles` and
+picker's, run against the first reviewed head's `bin/haseen-setup-dotfiles` and
 `install-picker.sh`). A second pass over the answer found that a link whose
 target ends in `/` made `git ls-tree` list a directory's children, so the
 first child's blob could stand in for the rc; `rc_object` now accepts only a
