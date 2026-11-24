@@ -296,7 +296,18 @@ picker_run_setup() {
         dotfiles) args+=("$PICK_DOTFILES_URL") ;;
         esac
         info "setup step: haseen ${args[*]}"
-        HASEEN_PATH="$(dirname "$bin")/../share/haseen" "$bin" "${args[@]}" "$@" ||
+        if HASEEN_PATH="$(dirname "$bin")/../share/haseen" "$bin" "${args[@]}" "$@"; then
+            # The installer seeded before this step. A repo rc that replaced
+            # one haseen had added its include to lost its rc-include record
+            # (plan 191), so seed once more: the include is back before the
+            # first login, and a seed writes only what is missing.
+            [[ $step != dotfiles ]] || {
+                info "setup step: haseen seed user (after the dotfiles)"
+                HASEEN_PATH="$(dirname "$bin")/../share/haseen" "$bin" seed user "$@" ||
+                    warn "some seeds failed (named above); fix them and run: haseen seed user"
+            }
+        else
             warn "haseen ${args[*]} failed; the layers are applied, run it again on its own"
+        fi
     done
 }

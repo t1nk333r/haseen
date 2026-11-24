@@ -257,10 +257,39 @@ done
 # good. Its record is dropped, so `haseen seed user` adds the line again.
 RC_MARKER="$HASEEN_USER_STATE/rc-include"
 RC_RESET=()
+# rc_object P — the repo object whose text is rc P: its own blob, or for a
+# link (mode 120000, whose blob is the link's target, not the rc) the tracked
+# file it names inside the repo. Nothing when the link leaves the repo, climbs
+# out with .., or names an untracked path: its text is unknown then, so the
+# record stays and the seed never appends through the link.
+rc_object() {
+    local i target entry
+    for i in "${!paths[@]}"; do
+        [[ ${paths[$i]} == "$1" ]] || continue
+        if [[ ${modes[$i]} != 120000 ]]; then
+            printf '%s\n' "${objs[$i]}"
+            return 0
+        fi
+        target="$(pgit cat-file -p "${objs[$i]}")"
+        [[ $target == "$HOME"/* ]] && target="${target#"$HOME"/}"
+        target="${target#./}"
+        [[ $target != /* && /$target/ != */../* && -n $target ]] || return 0
+        entry="$(pgit ls-tree HEAD -- "$target")"
+        # One entry, for exactly that path: a target ending in / lists a
+        # directory's children instead.
+        [[ $entry != *$'\n'* && $entry == *$'\t'"$target" ]] || return 0
+        [[ $entry == 100644\ blob\ * || $entry == 100755\ blob\ * ]] || return 0
+        read -r _ _ entry <<<"${entry%%$'\t'*}"
+        printf '%s\n' "$entry"
+        return 0
+    done
+}
 for p in "${CONFLICT[@]+"${CONFLICT[@]}"}" "${NEW[@]+"${NEW[@]}"}"; do
     [[ $p == .bashrc || $p == .zshrc ]] || continue
     grep -qsxF "$HOME/$p" "$RC_MARKER" || continue
-    pgit cat-file -p "HEAD:$p" >"$PLAN_TMP/rc"
+    rc_obj="$(rc_object "$p")"
+    [[ -n $rc_obj ]] || continue
+    pgit cat-file -p "$rc_obj" >"$PLAN_TMP/rc"
     [[ $(shellrc_include "$PLAN_TMP/rc") == live ]] || RC_RESET+=("$p")
 done
 

@@ -15,8 +15,9 @@
 - **Planned at**: 2026-11-24, from the owner ("fix them", after the
   35-auditor audit of 2026-11-24, group g07-seeds)
 - **State**: DONE 2026-11-24 (`tests/test-seeds.sh` 109/109,
-  `tests/test-dotfiles.sh` 84/84, `tests/test-shelltools.sh` 170/170; the
-  new checks fail on the code before this plan: 7, 11 and 7 failures)
+  `tests/test-dotfiles.sh` 91/91, `tests/test-shelltools.sh` 170/170,
+  `tests/test-install-picker.sh` 97/97; the new checks fail on the code
+  before this plan: 7, 11 and 7 failures, and the review round's 6)
 
 ## Problem
 
@@ -90,7 +91,13 @@ placed in `~/.config/yadm/hooks/`.
    haseen's shell include", the record line is dropped after the checkout
    (`write_user_file`, so `--dry-run` shows it), and the summary says
    `haseen seed user` adds the one line. The next seed (every install and
-   update runs one) adds it. `catalog.sh` prints the include line itself
+   update runs one) adds it. A repo rc that is a link (mode 120000, whose
+   blob is the link's target) is judged by the tracked file it names inside
+   the repo; a link that leaves the repo, climbs out with `..` or names an
+   untracked path keeps its record, so the seed never appends through it.
+   The installer seeds before its setup steps, so `picker_run_setup` runs
+   `haseen seed user` once more after a dotfiles step that worked: a fresh
+   install has the include back before the first login. `catalog.sh` prints the include line itself
    when `~/.bashrc` is already recorded, since the seed would add nothing
    there; otherwise it still advises the seed. `60-shell.sh`'s comment
    names the new case.
@@ -124,6 +131,12 @@ placed in `~/.config/yadm/hooks/`.
   yadm does. The dry run lists the hooks, the `-Y` calls and the record
   rewrite; the real run places the hooks without running them, drops only
   `~/.bashrc` from the record, and `haseen seed user` then adds the line.
+- `tests/test-dotfiles.sh` "links: …": a `.zshrc` linked to
+  a tracked file without the include loses its record, a `.bashrc` linked to
+  one with it keeps it, and a `.bashrc` linked out of the repo keeps its
+  record and the record is not rewritten.
+- `tests/test-install-picker.sh`: a dotfiles step that worked is followed by
+  one `haseen seed user`, and a failed one by none.
 - `tests/test-shelltools.sh` "the rc's own choices stay": a preset
   `MANPAGER` survives; in an interactive bash an rc's `bind -x` Ctrl-R
   survives while Ctrl-T is fzf's and the switch is unset after; a default
@@ -138,6 +151,11 @@ placed in `~/.config/yadm/hooks/`.
 - **Running `haseen seed user` from `haseen setup dotfiles`.** A second
   path that edits the user's rc; the next seed (every install and update)
   adds it, and the summary names the command.
+  The installer's picker runs the seed itself after the step instead: it is
+  the same seed the installer runs on every install.
+- **Skipping the check for a linked repo rc.** Its record would stay, and an
+  rc linked to a file without the include would lose it for good, the defect
+  this plan fixes; reading the tracked target costs one `git ls-tree`.
 - **Disabling the timer when root is listed, whatever else is.** It is the
   defect: root never uses the timeline.
 - **Writing `TIMELINE_CREATE=no` into the other configs.** Their timelines
@@ -149,3 +167,24 @@ placed in `~/.config/yadm/hooks/`.
   it with `git config --file`, which skips includes by default.
 - **Detecting Ctrl-R with `bind -p` alone.** `bind -x` bindings (atuin's)
   do not appear in it.
+
+## Review
+
+The independent Sonnet review of the first head approved it with two nits,
+both taken. First, the installer runs `haseen seed user` before the picker's
+setup steps, so on a fresh install whose dotfiles repo replaced `~/.bashrc`
+the include only came back at the next seed: `picker_run_setup` now seeds
+again after a dotfiles step that worked (`share/haseen/lib/install-picker.sh`,
+tested in `tests/test-install-picker.sh`). Second, for a repo rc that is a
+symlink `git cat-file` printed the link's target rather than the rc, so the
+record was dropped whatever the target held, and the next seed could append
+through the link; the check now reads the tracked file the link names and
+keeps the record for a link it cannot resolve inside the repo
+(`rc_object` in `bin/haseen-setup-dotfiles`, tested in
+`tests/test-dotfiles.sh`). The new checks fail on the code before the round
+(6 failures across the two files: the four "links: …" checks and two of the
+picker's, run against `b5fd6da9`'s `bin/haseen-setup-dotfiles` and
+`install-picker.sh`). A second pass over the answer found that a link whose
+target ends in `/` made `git ls-tree` list a directory's children, so the
+first child's blob could stand in for the rc; `rc_object` now accepts only a
+single entry for exactly the named path, and keeps the record otherwise.

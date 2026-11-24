@@ -256,6 +256,47 @@ assert_status "include: seeding afterwards succeeds" 0 "$STATUS"
 assert_eq "include: the seed adds the line to the repo's rc" "1" "$(grep -cF ". \"$INCLUDE\"" "$HOME/.bashrc")"
 assert_contains "include: the rc is recorded again" "$(cat "$XDG_STATE_HOME/haseen/rc-include")" "$HOME/.bashrc"
 
+# A repo rc that is a link: git's blob is the link's target, not the rc, so
+# the check reads the tracked file the link names. A link that leaves the repo
+# has no text to check, and its record stays (the seed would append through
+# the link into a file the repo does not hold).
+LINKFIX="$OUT/dotfiles-link-fixture"
+rm -rf "$LINKFIX"
+mkdir -p "$LINKFIX/src/.config/bash" "$LINKFIX/src/.config/zsh"
+lgit() { "$REAL_GIT" -C "$LINKFIX/src" -c user.name=fixture -c user.email=fixture@example.invalid "$@"; }
+printf '[ -r "%s" ] && . "%s"\n' "$INCLUDE" "$INCLUDE" >"$LINKFIX/src/.config/bash/bashrc"
+printf '%s\n' 'export EDITOR=nvim # zsh from the link repo' >"$LINKFIX/src/.config/zsh/zshrc"
+ln -s .config/bash/bashrc "$LINKFIX/src/.bashrc"
+ln -s .config/zsh/zshrc "$LINKFIX/src/.zshrc"
+lgit init -q -b main
+lgit add -A
+lgit commit -q -m links
+"$REAL_GIT" clone -q --bare "$LINKFIX/src" "$LINKFIX/dotfiles.git"
+
+dot_sandbox dotfiles-links
+mkdir -p "$XDG_STATE_HOME/haseen"
+printf '%s\n' "$HOME/.bashrc" "$HOME/.zshrc" >"$XDG_STATE_HOME/haseen/rc-include"
+capture haseen-setup-dotfiles "$LINKFIX/dotfiles.git" --dry-run
+assert_status "links: dry run" 0 "$STATUS"
+assert_contains "links: a link to a file without the include loses its record" "$OUTPUT" \
+    $'(`haseen seed user` adds it again):\n    ~/.zshrc\n'
+assert_contains "links: so the record is rewritten" "$OUTPUT" "    | $HOME/.bashrc"
+assert_not_contains "links: a link to a file with the include keeps it" "$OUTPUT" "    | $HOME/.zshrc"
+
+rm "$LINKFIX/src/.bashrc"
+ln -s /etc/bash.bashrc "$LINKFIX/src/.bashrc"
+lgit add -A
+lgit commit -q -m outside
+rm -rf "$LINKFIX/dotfiles.git"
+"$REAL_GIT" clone -q --bare "$LINKFIX/src" "$LINKFIX/dotfiles.git"
+dot_sandbox dotfiles-links-out
+mkdir -p "$XDG_STATE_HOME/haseen"
+printf '%s\n' "$HOME/.bashrc" >"$XDG_STATE_HOME/haseen/rc-include"
+capture haseen-setup-dotfiles "$LINKFIX/dotfiles.git" --dry-run
+assert_status "links: dry run, a link out of the repo" 0 "$STATUS"
+assert_not_contains "links: a link out of the repo keeps its record" "$OUTPUT" "haseen seed user\` adds it again"
+assert_not_contains "links: and the record is not rewritten" "$OUTPUT" "write $XDG_STATE_HOME/haseen/rc-include"
+
 # --- a haseen branch: its hyprland.lua wins, no import, bootstrap on request ---------
 dot_sandbox dotfiles-branch
 stub sudo 'exec "$@"'
