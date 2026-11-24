@@ -36,6 +36,16 @@ assert_contains "the pill shows it unless settings.temperature is false" "$(cat 
     'text: settings.temperature !== false && service && service.reportTempNum !== "" ? service.reportTempNum + "°" : ""'
 assert_eq "manual location empty by default (GeoClue, else IP)" "" "$(jq -r '.settings.location.default' "$PLUGIN/manifest.json")"
 assert_eq "debug hook off by default" "false" "$(jq -r '.settings.debugIpc.default' "$PLUGIN/manifest.json")"
+# On by default (owner, 2026-11-24, plan 190): the shipped shell.json puts it in
+# the bar and in services and never switches it off. It carries no location,
+# so GeoClue, else wttr.in's IP lookup, finds one (the "no location" cases
+# below).
+DEFAULT_CFG="$HASEEN_PATH/default/shell.json"
+assert_eq "on by default: not switched off in the shipped shell.json" "null" \
+    "$(jq -c '.plugins["haseen.weather"].enabled' "$DEFAULT_CFG")"
+assert_eq "in the default bar and services" "true true" \
+    "$(jq -r '[(.bar.right | index("haseen.weather") != null), (.services | index("haseen.weather") != null)] | join(" ")' "$DEFAULT_CFG")"
+assert_eq "no location in the shipped default" "" "$(jq -r '.plugins["haseen.weather"].settings.location' "$DEFAULT_CFG")"
 
 # --- fakes: GeoClue's where-am-i and curl ------------------------------------
 # where-am-i prints the fix and keeps running until its -t timeout (geoclue

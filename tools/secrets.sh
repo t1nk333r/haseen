@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # tools/secrets.sh — run before every push to the public repository.
 #   1. gitleaks over every ref a push can reach and the working tree (tracked files);
-#   2. privacy patterns gitleaks does not know about: tailnet (100.64/10) and
-#      lab LAN addresses, home paths, personal e-mail addresses, private keys.
+#   2. privacy patterns gitleaks does not know about: tailnet (100.64/10)
+#      addresses, home paths, personal e-mail addresses, private keys.
+# Neither pass reads commit messages or author and committer identities, and
+# no pattern matches private LAN ranges (RFC 1918): firewall rules and test
+# fixtures use them on purpose (plan 201). Review for those by eye.
 # GITLEAKS overrides the binary (the author's laptop uses a static release in
 # /tmp/tools). Exit 1 on any finding.
 set -Eeuo pipefail
@@ -22,9 +25,9 @@ else
     fail=1
 fi
 
-# Patterns over tracked files and every commit's diff. Test fixtures use
-# example.invalid / example.com / RFC 1918 documentation-style addresses, which
-# are allowed explicitly.
+# Patterns over tracked files and every commit's diff (added lines only).
+# Test fixtures use example.invalid / example.com, the RFC 5737 documentation
+# ranges and private LAN ranges, which none of these patterns matches.
 patterns=(
     '\b100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b' # Tailscale CGNAT
     '/home/[a-z_][a-z0-9_-]*/'                                                 # absolute home paths

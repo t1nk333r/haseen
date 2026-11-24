@@ -191,3 +191,33 @@ fn a_full_stderr_is_not_a_crash() {
         .expect("run haseen-palette");
     assert_eq!(bad_flag.code(), Some(2));
 }
+
+#[test]
+fn a_cache_that_cannot_be_written_still_prints_the_palette() {
+    // The palette is computed before the cache write fails: it is printed,
+    // the failure is a warning, and the run succeeds (plan 194).
+    let dir = std::env::temp_dir().join(format!("haseen-palette-nocache-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let blocker = dir.join("file");
+    std::fs::write(&blocker, "").unwrap();
+    let img = corpus("png-rgb8.png");
+    let out = Command::new(BIN)
+        .arg(&img)
+        .env("HASEEN_PALETTE_CACHE", blocker.join("cache"))
+        .output()
+        .expect("run haseen-palette");
+    let _ = std::fs::remove_dir_all(&dir);
+    let (stdout, stderr) = (
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    assert!(stdout.contains("\ncolor15 = \"#"), "{stdout}");
+    assert_eq!(
+        stderr,
+        format!(
+            "haseen-palette: cache palette: mkdir {}: not a directory\n",
+            blocker.display()
+        )
+    );
+}

@@ -1,10 +1,12 @@
 # shellcheck shell=bash
-# haseen:covers bin/** share/**
+# haseen:scans bin/** share/**
 # haseen:covers tests/fixtures/{arch-bios,arch-sdboot-sb-enabled,cachyos-grub-plain}/**
 # haseen:covers tests/fixtures/{cachyos-limine-luks-dualboot,nixos,omarchy-limine-host}/**
 # haseen:covers tests/fixtures/{sb-grub-setup,sb-limine-setup-windows,sb-sdboot-enabled}/**
 # haseen:covers tests/fixtures/sb-sdboot-setup-tpm/** tests/fixtures/*/expected.preflight
 # haseen:covers tests/test-*.sh install.sh
+# bin/** and share/** are a scan, not a claim: the owner-plugin grep below reads
+# every file there, and the tests that exercise a file claim it (plan 201).
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -75,9 +77,22 @@ assert_contains "aur package via paru" "$OUTPUT" "DRYRUN: paru -S --needed paru-
 assert_contains "layer args reach last layer only" "$OUTPUT" "touch /etc/haseen-test-c --flag"
 assert_contains "dependency applied without args" "$OUTPUT" "touch /etc/haseen-test-a"$'\n'
 assert_contains "marker written" "$OUTPUT" "write /var/lib/haseen/layers/c"
+assert_contains "the layer-applied hooks run for each layer applied (plan 200)" "$OUTPUT" \
+    "DRYRUN: $REPO/bin/haseen-hook run layer-applied a"$'\n'
+assert_contains "the last one with its own name" "$OUTPUT" "DRYRUN: $REPO/bin/haseen-hook run layer-applied c"
+assert_eq "after the layer is applied" "marker" \
+    "$(awk '/write \/var\/lib\/haseen\/layers\/c/ { m = 1 } /run layer-applied c/ { print (m ? "marker" : "first") }' <<<"$OUTPUT")"
 
 capture env HASEEN_SYSROOT="$FIXTURES/nixos" haseen layer apply a --dry-run
 assert_contains "distro gate" "$OUTPUT" "does not support distro 'nixos'"
+assert_not_contains "a layer that was not applied fires no hook" "$OUTPUT" "layer-applied"
+
+# Every event haseen hook install accepts is one haseen fires: a hook
+# installed for it runs (plan 200).
+for ev in $(sed -n 's/^HOOK_EVENTS=(\(.*\))$/\1/p' "$REPO/bin/haseen-hook"); do
+    assert_contains "hook event $ev has a caller" \
+        "$(grep -rlE "(^|[^a-z-])run $ev([^a-z-]|$)" "$REPO/bin" "$REPO/share" --exclude=haseen-hook --exclude='*.md' | head -n1)" "/"
+done
 
 printf 'Bad Name\n' >"$L/a/packages.txt"
 capture env HASEEN_SYSROOT="$fx" haseen layer apply a --dry-run

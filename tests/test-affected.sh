@@ -244,3 +244,54 @@ env PATH="$GIT_PATH" git init -q "$SANDBOX/empty"
 capture env PATH="$GIT_PATH" "$SANDBOX/empty/tools/affected-tests.sh" --check
 assert_status "an empty file list stops --check" 2 "$STATUS"
 assert_contains "and says so" "$OUTPUT" "git listed no files"
+
+# --- a scans glob selects its test but claims nothing (plan 201) -----------------
+# test-core.sh greps every file under bin/ and share/ for the owner's plugin
+# dirs. As a covers glob that sweep claimed every product file, so --check could
+# never find one no test exercises and rule 6 never fired there.
+g checkout -q -f main
+put tests/test-sweep.sh $'# shellcheck shell=bash\n# haseen:covers src/beta.sh\n# haseen:scans src/**\nassert_eq "sweep runs" yes yes'
+g add -A
+g commit -q -m sweep
+sel --check
+assert_status "a scans glob passes --check where covers claim every file" 0 "$STATUS"
+change put src/alpha/a.txt "a5"
+assert_eq "a scans glob selects its test beside the covering one" \
+    "tests/test-alpha.sh tests/test-sweep.sh" "$(picked main)"
+sel main
+assert_contains "the report names the scan" "$OUTPUT" "src/alpha/a.txt: test-alpha.sh; scanned by test-sweep.sh"
+change put src/gamma/sub/g.c
+assert_eq "a path only a scan reaches still runs every test" "all" "$(picked main)"
+sel --check
+assert_status "a file only a scan reaches fails --check" 1 "$STATUS"
+assert_contains "and is listed as uncovered" "$OUTPUT" $'(add a \'# haseen:covers\' glob to the tests that exercise them):\n  src/gamma/sub/g.c'
+change sed -i 's#^\# haseen:scans src/\*\*#& nothing/**#' "$S/tests/test-sweep.sh"
+sel --check
+assert_status "a stale scans glob fails --check" 1 "$STATUS"
+assert_contains "and is listed with its test" "$OUTPUT" "  tests/test-sweep.sh: nothing/**"
+
+# --- a test that names a fixture covers it (plan 201) ------------------------------
+# test-omarchy45-boot.sh ran haseen against the sb-sdboot-enabled fixture without
+# covering it, so an edit to that fixture selected other tests and not this one.
+fixture_read() {
+    put tests/fixtures/fx-one/etc/os-release "ID=arch"
+    sed -i 's#^\# haseen:covers src/alpha/\*\*#& tests/fixtures/fx-one/**#' "$S/tests/test-alpha.sh"
+    printf '%s\n' ': "$FIXTURES/fx-one"' >>"$S/tests/test-gamma.sh"
+}
+change fixture_read
+sel --check
+assert_status "a test that reads a fixture its covers miss fails --check" 1 "$STATUS"
+assert_contains "and names the test and the fixture" "$OUTPUT" \
+    $'none of their covers name (add it to the test\'s covers):\n  tests/test-gamma.sh: tests/fixtures/fx-one'
+assert_not_contains "the test that covers it is not listed" "$OUTPUT" "tests/test-alpha.sh: tests/fixtures/fx-one"
+fixture_covered() {
+    fixture_read
+    sed -i 's#^\# haseen:covers src/{gamma,delta}/\*\.c#& tests/fixtures/fx-one/etc/os-release#' "$S/tests/test-gamma.sh"
+}
+change fixture_covered
+sel --check
+assert_status "one file of the fixture in its covers is enough" 0 "$STATUS"
+put tests/fixtures/fx-one/etc/os-release "ID=cachyos"
+g commit -q -am fixture-edit
+assert_eq "and an edit to the fixture now selects the test" "tests/test-alpha.sh tests/test-gamma.sh" \
+    "$(picked "$(env PATH="$GIT_PATH" git -C "$S" rev-parse topic~1)")"

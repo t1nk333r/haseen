@@ -121,7 +121,7 @@ done
 if command -v node >/dev/null; then
     capture node "$PLUGIN/tests/model.test.js"
     assert_status "Model.js suite (the original's)" 0 "$STATUS"
-    assert_contains "Model.js suite count" "$OUTPUT" "284 passed, 0 failed"
+    assert_contains "Model.js suite count" "$OUTPUT" "290 passed, 0 failed"
 else
     engine_skip "node not installed; the Model.js suite"
 fi
@@ -208,7 +208,7 @@ else
     assert_contains "status reports the keyboard" "$WOUT" "keyboard:       present"
     assert_contains "status reports the firmware" "$WOUT" "firmware:       v2.14.0"
     assert_contains "status names the node and framing" "$WOUT" "/dev/hidraw5 (arm framing)"
-    assert_contains "status counts the selectable profiles" "$WOUT" "active slot:    0 of 1"
+    assert_contains "status counts the selectable profiles" "$WOUT" "active slot:    0 (profile 1 of 1)"
     assert_contains "status marks the active profile" "$WOUT" "* 0  1 Typing Profile"
     assert_contains "status shows the profile's own settings under it (plan 153)" "$WOUT" \
         "$(printf '  * 0  1 Typing Profile\n       actuation 2.50 mm, Rapid Trigger off')"
@@ -253,7 +253,7 @@ else
 
     fake_start cli4 --profiles 4
     wrun status
-    assert_contains "status counts every stored profile" "$WOUT" "active slot:    0 of 4"
+    assert_contains "status counts every stored profile" "$WOUT" "active slot:    0 (profile 1 of 4)"
     assert_contains "status flags nameless stored slots" "$WOUT" "  1  Profile 2  (unnamed slot)"
     assert_contains "status says continuous Rapid Trigger with its sensitivity" "$WOUT" \
         "$(printf '  1  Profile 2  (unnamed slot)\n       actuation 1.00 mm, continuous Rapid Trigger 0.40 mm')"
@@ -278,6 +278,11 @@ else
     assert_contains "the miss points at list" "$WERR" 'no profile named "Profile" (see: haseen wooting list)'
     wrun set 1
     assert_eq "a bare number is a slot index" "1" "$WOUT"
+
+    # Slots 0 and 3 hold profiles and 3 is active: never "3 of 2" (plan 199).
+    fake_start cli4gap --active 3
+    wrun status
+    assert_contains "status places the active slot among the stored profiles" "$WOUT" "active slot:    3 (profile 2 of 2)"
 
     fake_start cli5 --analog-keys '[{"row":2,"col":2,"code":26,"value":0.62,"actuated":true},{"row":5,"col":6,"code":44,"value":0.1,"actuated":false}]'
     wrun analog
@@ -504,6 +509,10 @@ FAKED
     fake_start doca --absent
     doctor
     assert_contains "a daemon that sees no keyboard is exit 4" "$STATUS|$WOUT" "4|"
+    # Interface, access and the conflicting owner, the usual cause (plan 199).
+    assert_contains "and points at the checks that explain it" "$WOUT" "5. Wooting command interface"
+    assert_contains "from the interface to the conflicting owner" "$WOUT" "7. conflicting owner"
+    assert_contains "the hint names those checks" "$WOUT" "see checks 5-7 above"
     fake_start docs --silent
     doctor WOOTING_IPC_TIMEOUT=0.5
     assert_contains "a wedged daemon is exit 3" "$STATUS|$WOUT" "3|"
@@ -819,7 +828,9 @@ ShellRoot {
     Timer {
         id: t3; interval: 1200
         onTriggered: {
-            line("switched", { text: w.text, widget: w.keyboard.active, panel: p.keyboard.active });
+            line("switched", { text: w.text, widget: w.keyboard.active, panel: p.keyboard.active, pending: p.pending });
+            p.choose(9);
+            line("asked", { pending: p.pending });
             p.showLayout = true;
             t4.running = true;
         }
@@ -829,6 +840,7 @@ ShellRoot {
         onTriggered: {
             const b = p.layoutView;
             line("layout", { keys: b ? b.keys.length : -1, model: b ? b.device.model : null, pressed: b ? b.pressedCount : -1 });
+            line("refused", { pending: p.pending, error: p.keyboard.error, active: p.keyboard.active });
             Quickshell.execDetached(["kill", Quickshell.env("FAKE_PID")]);
             t5.running = true;
         }
@@ -858,7 +870,11 @@ QML
     assert_eq "each profile row shows its own settings and colour, and nothing it does not know (plan 153)" \
         '["Actuation 2.50 mm · Rapid Trigger off|","Actuation 1.00 mm · Continuous Rapid Trigger 0.40 mm|","Actuation 1.60 mm · Rapid Trigger off · Tachyon Mode|#ffd45c","|"]' \
         "$(result rows)"
-    assert_eq "a switch from the panel reaches the bar through the daemon" '{"text":"Profile 3","widget":2,"panel":2}' "$(result switched)"
+    assert_eq "a switch from the panel reaches the bar through the daemon" '{"text":"Profile 3","widget":2,"panel":2,"pending":-1}' "$(result switched)"
+    # The panel waits for wootingd's answer, and shows a refusal (plan 199).
+    assert_eq "a switch asked for is pending until wootingd answers" '{"pending":9}' "$(result asked)"
+    assert_eq "a refused switch is shown in the panel, which stays open for it" \
+        '{"pending":-1,"error":"slot 9 out of range (device has 4 addressable slots; selectable: 0, 1, 2, 3)","active":2}' "$(result refused)"
     assert_eq "the layout view draws the 60HE+ and its key travel" '{"keys":61,"model":"Wooting 60HE+","pressed":1}' "$(result layout)"
     assert_eq "the daemon goes: the widget hides again" '{"shown":false,"width":0,"panelPresent":false}' "$(result gone)"
     assert_not_contains "no QML errors" "$OUTPUT" "plugins/haseen.wooting/"

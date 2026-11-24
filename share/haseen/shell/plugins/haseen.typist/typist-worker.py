@@ -13,8 +13,13 @@
 # (LevelThree, Mod5) has no such name: sent as ALT it would type a different
 # character, so those characters are skipped and counted instead.
 #
-# The text is read from stdin and never passed to another process: the keymap
-# is built from the layout alone, and only key codes reach --keys.
+# The text is read from stdin and never passed to another process as text:
+# the keymap is built from the layout alone, and only key codes reach --keys.
+# That is not secrecy. Each character still starts one --keys process, and the
+# shim one hyprctl per key, whose argv (key codes, Shift, and the code + 8)
+# every local account can read in /proc/<pid>/cmdline while it runs, and the
+# layout maps those codes back to the text. Typing a password with typist on a
+# machine shared with another account shows it to that account (plan 198).
 import argparse
 import ctypes
 import ctypes.util
@@ -135,8 +140,8 @@ def build_keymap(layout):
     Shift alone to key actions.
 
     The whole map is built up front from the layout alone, so no clipboard
-    character is ever passed to another process as an argument, where it would
-    be readable in /proc/<pid>/cmdline.
+    character is passed to another process as an argument. The key codes that
+    are passed spell the same text on this layout (see the header).
     """
     lib = _load_xkb()
     context = lib.xkb_context_new(0)
@@ -228,9 +233,9 @@ def type_text(text, keys, delay, newline_delay, punctuation_delay, layout=None):
 
         seq = key_sequence_for_char(ch, keymap)
         if seq is None:
-            # Not reachable on this layout without AltGr, or not at all.
-            # Passing the character itself to another program would expose it
-            # in /proc/<pid>/cmdline, so it is skipped and counted.
+            # Not reachable on this layout without AltGr, or not at all. The
+            # shim has no AltGr mod name, and the character is never handed
+            # to another program as text instead, so it is skipped and counted.
             skipped += 1
             continue
 

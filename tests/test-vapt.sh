@@ -8,6 +8,7 @@
 # haseen:covers share/haseen/omarchy/bin/** share/haseen/systemd/user/**
 # haseen:covers tests/fixtures/desk-cachyos-amd/** tests/fixtures/vapt-host/**
 # haseen:covers tests/fixtures/vapt-driver.py tests/fixtures/vapt-lib.sh
+# haseen:covers tests/fixtures/omarchy-limine-host/etc/os-release
 # haseen:covers tests/fixtures/vapt-runner.sh share/haseen/layers/*/*.sh share/haseen/lib/cairn.sh
 # haseen:covers share/haseen/lib/catalog.sh share/haseen/lib/greeter.sh share/haseen/lib/terminal.sh
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME

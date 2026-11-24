@@ -488,6 +488,19 @@ vapt_oniomarchy_enable_command() {
     info 'oniomarchy approved for dedicated VAPT transactions; use haseen vapt install --with-oniomarchy per operation'
 }
 
+# vapt_oniomarchy_enable_staged — the enable command in a subshell whose
+# traps remove its stages. Enable stages like an install (a user
+# transaction.* stage and a root /var/cache/haseen-vapt.* stage), so an
+# interrupt at a download or a sudo prompt must not leave them behind, as
+# vapt_provision's traps ensure for installs (plan 195).
+vapt_oniomarchy_enable_staged() (
+    trap 'vapt_transaction_cleanup; vapt_pacman_cleanup' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    vapt_oniomarchy_enable_command
+)
+
 vapt_oniomarchy_disable_command() {
     vapt_oniomarchy_canary || { warn 'oniomarchy source state unreadable; nothing changed'; return 1; }
     case "${VAPT_ONIO[descriptor]}" in

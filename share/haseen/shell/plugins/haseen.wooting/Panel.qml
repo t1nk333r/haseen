@@ -8,8 +8,9 @@ import "Model.js" as Model
 // (MIT, Copyright (c) 2026 t1nk33r): the bar popup's profile list (Panel.qml
 // PopupCard) and, one click further, its keyboard layout view (LayoutPanel.qml),
 // in the one lazy panel haseen gives a plugin. Only profiles that hold stored
-// data are listed (wootingd refuses the empty ones); a click switches and
-// closes the panel, and the bar's label moves when the keyboard confirms.
+// data are listed (wootingd refuses the empty ones); a click switches, and
+// the panel closes when wootingd confirms the switch or shows why it did not
+// (plan 199). The bar's label moves when the keyboard confirms.
 // The drawing and its key-travel stream exist only while it is shown.
 Column {
     id: root
@@ -26,15 +27,19 @@ Column {
     property bool showLayout: false
     // The keyboard drawing while it is shown (Board.qml), else null.
     readonly property alias layoutView: board.item
+    // The slot a click asked for until wootingd answers; -1 when none.
+    property int pending: -1
 
     width: Math.max(Theme.fontSize * 24, board.item ? board.item.implicitWidth : 0)
     spacing: Theme.gap
 
     // No prediction: the bar and this panel move when wootingd reports the
-    // switch on its subscription.
+    // switch on its subscription. The panel waits for the answer to close:
+    // closing frees this connection, and wootingd sends a refusal only to the
+    // connection that asked (plan 199).
     function choose(slot: int): void {
         if (link.send("profile set " + slot))
-            Quickshell.execDetached(["qs", "ipc", "--pid", pid, "call", "panel", "close"]);
+            root.pending = slot;
         else
             root.keyboard = Model.applyMessage(root.keyboard, {
                 ok: false,
@@ -47,7 +52,10 @@ Column {
 
         hello: "subscribe\n"
         onUp: root.keyboard = Model.withConnected(root.keyboard, true)
-        onDown: root.keyboard = Model.disconnected(root.keyboard)
+        onDown: {
+            root.pending = -1;
+            root.keyboard = Model.disconnected(root.keyboard);
+        }
         onReceived: line => {
             const message = Model.parseLine(line);
             if (!message)
@@ -55,6 +63,11 @@ Column {
             root.keyboard = Model.applyMessage(root.keyboard, message);
             if (typeof message.model === "string")
                 root.modelName = message.model;
+            const outcome = Model.switchOutcome(root.pending, message);
+            if (outcome !== "")
+                root.pending = -1;
+            if (outcome === "done")
+                Quickshell.execDetached(["qs", "ipc", "--pid", root.pid, "call", "panel", "close"]);
         }
     }
 

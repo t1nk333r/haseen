@@ -54,6 +54,26 @@ capture haseen-vapt-tool-list --json
 assert_status 'pacman local DB discovery succeeds' 0 "$STATUS"
 assert_eq 'pacman file entry discovered' /usr/bin/scan-two "$(jq -r '.tools[0].entrypoints[0].id' <<<"$OUTPUT")"
 workflow_no_calls local-db
+# A list value spelled %KEY% stays a value, as libalpm reads it: a package's
+# own groups/licence cannot forge another package's name, version or URL
+# (plan 195).
+mkdir -p "$ROOT/var/lib/pacman/local/evil-1-1"
+printf '%%NAME%%\nevil\n\n%%VERSION%%\n1-1\n\n%%GROUPS%%\n%%NAME%%\nhttpx\n%%VERSION%%\n1.6.0-1\n\n%%LICENSE%%\n%%URL%%\nhttps://github.com/projectdiscovery/httpx\n\n' \
+    >"$ROOT/var/lib/pacman/local/evil-1-1/desc"
+capture python3 "$VAPT_META" installed blackarch httpx 1.6.0-1 https://github.com/projectdiscovery/httpx --root "$ROOT"
+assert_eq 'forged groups never make a package look installed' unknown "$OUTPUT"
+capture python3 "$VAPT_META" installed extra evil 1-1 - --root "$ROOT"
+assert_status 'the record with forged-looking values still parses' 0 "$STATUS"
+capture python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import metadata
+r = metadata.field_data(open(sys.argv[2]).read())
+print(r["name"], r["version"], r.get("url", ""), "|".join(r["groups"]), "|".join(r["license"]))' \
+    "$VAPT_LAYER" "$ROOT/var/lib/pacman/local/evil-1-1/desc"
+assert_eq 'the real name, version and lists are kept' \
+    'evil 1-1  %NAME%|httpx|%VERSION%|1.6.0-1 %URL%|https://github.com/projectdiscovery/httpx' "$OUTPUT"
+capture python3 -B -c 'import sys; sys.path.insert(0, sys.argv[1]); import metadata
+metadata.field_data("%NAME%\nevil\n\n%NAME%\nhttpx\n\n")' "$VAPT_LAYER"
+assert_status 'a repeated key is malformed, not a reset' 1 "$STATUS"
+rm -r "$ROOT/var/lib/pacman/local/evil-1-1"
 # Pinned native state is read from existing metadata verifier, and console
 # entries from distribution RECORD; no importlib or installed Python runs.
 workflow_fixture vapt-native-discovery

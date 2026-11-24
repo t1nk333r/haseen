@@ -115,6 +115,11 @@ impl Sampler {
         let processes = if processes {
             self.processes(8, now)
         } else {
+            // As with the network below: the panel that opens again an hour
+            // later ranks tasks by their share since then, not since its last
+            // look (plan 199).
+            self.prev_proc.clear();
+            self.prev_proc_at = None;
             Vec::new()
         };
         let system = if system {
@@ -134,6 +139,20 @@ impl Sampler {
             processes,
             system,
         }
+    }
+
+    /// Nobody is subscribed: stop nvidia-smi, which would otherwise go on
+    /// polling the GPU (and keep a hybrid laptop's dGPU awake) until the
+    /// daemon exits, and forget every baseline, so the first sample after the
+    /// gap is -1 rather than an average over the time nobody was asking
+    /// (plan 199).
+    pub fn idle(&mut self) {
+        self.stop_nvidia();
+        self.gpu.prev_idle_at = None;
+        self.prev_cpu = None;
+        self.prev_proc.clear();
+        self.prev_proc_at = None;
+        self.sys.net = None;
     }
 
     /// The busy share since the previous call; -1 on the first one. Idle
@@ -657,6 +676,50 @@ pub(crate) mod tests {
                 .any(|p| p.pid == 12 && p.command == "Web (Content)"),
             "{found:?}"
         );
+    }
+
+    // The panel closed (processes not asked for) and opened again much later:
+    // the first list after the gap is empty, as the very first one is, not
+    // ranked by each task's share of the whole gap (plan 199).
+    #[test]
+    fn processes_forget_a_gap() {
+        let root = TempDir::new();
+        write(
+            &root.0.join("proc/meminfo"),
+            "MemTotal: 1000 kB\nMemAvailable: 500 kB\n",
+        );
+        proc(&root.0, 10, 100, "old");
+        let mut s = Sampler::new(&root.bytes());
+        assert!(s.sample("off", true, false).processes.is_empty());
+        proc(&root.0, 10, 500, "old");
+        assert!(s.sample("off", false, false).processes.is_empty());
+        assert!(
+            s.sample("off", true, false).processes.is_empty(),
+            "the first list after the gap has nothing to compare with"
+        );
+        proc(&root.0, 10, 600, "old");
+        assert_eq!(s.sample("off", true, false).processes.len(), 1);
+
+        s.idle();
+        assert!(
+            s.sample("off", true, false).processes.is_empty(),
+            "nor after the last subscriber left"
+        );
+    }
+
+    // Nobody subscribed for a while: the CPU share starts from -1 again.
+    #[test]
+    fn idle_forgets_the_cpu_baseline() {
+        let root = TempDir::new();
+        let stat = root.0.join("proc/stat");
+        let mut s = Sampler::new(&root.bytes());
+        write(&stat, "cpu  100 0 100 700 100 0 0 0 0 0\n");
+        s.cpu_percent();
+        s.idle();
+        write(&stat, "cpu  150 0 150 800 100 0 0 0 0 0\n");
+        assert_eq!(s.cpu_percent(), -1.0, "after idle");
+        write(&stat, "cpu  200 0 200 900 100 0 0 0 0 0\n");
+        assert_eq!(s.cpu_percent(), 50.0);
     }
 
     #[test]

@@ -37,10 +37,30 @@ action="${1:-status}"
     exit 2
 }
 
-socket_answers() {
-    [[ -S $SOCKET ]] || return 1
-    have socat || return 0
-    timeout 2 socat -u /dev/null UNIX-CONNECT:"$SOCKET" 2>/dev/null
+# socket_listener — the `ss` row of whatever listens on the socket (with its
+# pid), empty when nothing does. ss is iproute2, which Arch's base pulls in;
+# socat is not installed by default, and a daemon that was SIGKILLed or
+# aborted leaves its socket file behind (plan 199).
+socket_listener() {
+    ss -xlnpH src "$SOCKET" 2>/dev/null
+}
+
+# socket_state — running, not running, or unknown when neither socat nor ss
+# can tell a live socket from a stale one.
+socket_state() {
+    if [[ ! -S $SOCKET ]]; then
+        echo "not running"
+    elif have socat; then
+        if timeout 2 socat -u /dev/null UNIX-CONNECT:"$SOCKET" 2>/dev/null; then
+            echo running
+        else
+            echo "not running"
+        fi
+    elif have ss; then
+        if [[ -n $(socket_listener) ]]; then echo running; else echo "not running"; fi
+    else
+        echo unknown
+    fi
 }
 
 # wipe_status — the border wipe line, from the daemon's `status` answer.
@@ -67,17 +87,19 @@ status)
         printf 'binary:       missing (%s)\n' "$BINARY"
         printf 'capabilities: none; features that need the daemon stay hidden\n'
     fi
-    printf 'socket:       %s' "$SOCKET"
-    if socket_answers; then
-        printf ' (running)\n'
-        wipe_status
-    else
-        printf ' (not running)\n'
+    state="$(socket_state)"
+    printf 'socket:       %s (%s)\n' "$SOCKET" "$state"
+    if [[ $state == running ]]; then
+        if have socat && have jq; then
+            wipe_status
+        else
+            printf 'border wipe:  unknown (asking the daemon needs socat and jq)\n'
+        fi
     fi
     ;;
 start)
     [[ -x $BINARY ]] || die "no daemon at $BINARY (haseen sidecar build)"
-    if socket_answers; then
+    if [[ $(socket_state) == running ]]; then
         info "already running on $SOCKET"
         exit 0
     fi
@@ -89,16 +111,26 @@ start)
     info "started $BINARY"
     ;;
 stop)
-    socket_answers || {
+    case "$(socket_state)" in
+    "not running")
         info "not running"
         exit 0
-    }
+        ;;
+    unknown) die "cannot tell whether the daemon on $SOCKET runs: install socat or iproute2" ;;
+    esac
     if $DRY_RUN; then
         echo "DRYRUN: ask the daemon on $SOCKET to shut down"
         exit 0
     fi
-    require_cmds socat
-    printf '{"id":1,"method":"shutdown"}\n' | timeout 2 socat - UNIX-CONNECT:"$SOCKET" >/dev/null || true
+    if have socat; then
+        printf '{"id":1,"method":"shutdown"}\n' | timeout 2 socat - UNIX-CONNECT:"$SOCKET" >/dev/null || true
+    else
+        # Without socat, SIGTERM does the same: the daemon removes its socket
+        # and exits.
+        pid="$(socket_listener | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+        [[ -n $pid ]] || die "no process listens on $SOCKET"
+        kill -TERM "$pid"
+    fi
     info "asked the daemon to exit"
     ;;
 build)

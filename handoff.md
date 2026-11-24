@@ -1,6 +1,6 @@
 # Handoff — haseen
 
-Orientation for whoever picks this up next, human or agent. Updated 2026-10-14.
+Orientation for whoever picks this up next, human or agent. Updated 2026-11-24.
 
 ## What this repo is
 
@@ -97,7 +97,7 @@ The owner's other repos:
 | Stage Manager (on by default): push the pointer against a screen's left edge and the monitor's other workspaces slide in as turned stacks of their windows' pictures; click one to switch, move away or Escape to close; one transparent strip per screen at rest | `share/haseen/shell/plugins/haseen.stage/`, `share/haseen/migrations/1794512737-stage-service.sh`, `tests/test-stage.sh` | 163 |
 | The Wi-Fi QR code: the network panel's QR button and card (on a personal Wi-Fi network; the code as one Shape path in the theme's colours, the password on click) and `haseen network qr` (`omarchy-network-qr` is a shim over it) | `share/haseen/shell/plugins/haseen.network/`, `bin/haseen-network-qr`, `tests/test-network-panel.sh` | 166 |
 | Tests | `tests/run.sh`, `tests/test-*.sh`, `tests/fixtures/*` | each plan |
-| Affected tests: `# haseen:covers` per test, `tests/run.sh --affected` before commits, on PRs and on each push to `main`; the full suite only by hand | `tools/affected-tests.sh`, `tests/test-affected.sh`, `.github/workflows/ci.yml` | 100 176 |
+| Affected tests: `# haseen:covers` per test, `tests/run.sh --affected` before commits, on PRs and on each push to `main`; the full suite only by hand; `# haseen:scans` for a test that sweeps a whole tree (it selects the test and claims nothing), and every fixture a test names in its covers | `tools/affected-tests.sh`, `tests/test-affected.sh`, `.github/workflows/ci.yml` | 100 176 201 |
 
 `plans/README.md` holds the live status of every plan. Plan 007 (security
 tooling), dropped by the owner on 2026-10-04, was reinstated on 2026-10-07 as
@@ -115,18 +115,18 @@ host and Arch's own repositories over any HTTPS mirror.
 - 0003: own shell, DMS swap-in, plugin compat
 - 0004: installer now, PKGBUILDs later
 
-## State and queue (2026-10-14)
+## State and queue (2026-11-24)
 
-- PRs #39 (VAPT provisioning, plans 007 and 087) and #40 (VAPT workflow and
-  Security panel, plans 088 and 089) merged on 2026-10-12; #42 (the VAPT
-  audit fixes, plan 090) on 2026-10-14.
-- PR #41 re-lands PR #38's desktop work (plans 009, 036–038, 040–047) on
-  `main` without #38's stale copy of the VAPT files; #38 is closed in its
-  favour. The screenshot annotator is Tensaku, not satty (owner, 2026-10-14,
-  plan 041); Omasnap replaced Tensaku on 2026-10-21 (plan 107).
+- `plans/README.md` is the live status. On `main` the record runs to plan
+  184 (pull request #142, 2026-11-22); the fixes for the 2026-11-24 audit
+  (35 auditors, every finding re-traced) are plans 185 to 201, one pull
+  request per group of findings.
 - Still unproven for plan 088: the Security panel on a real compositor and
-  through AT-SPI.
-- The next free plan number is 091.
+  through AT-SPI (its row in `plans/README.md`).
+- The next free plan number is the one after the last row of
+  `plans/README.md`. Check `main`'s copy again before merging: a pull request
+  merged meanwhile may have taken it, and `tools/check-docs.sh` fails on a
+  number with two rows.
 
 ## Gates
 

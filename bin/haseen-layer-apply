@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 # shellcheck source=../share/haseen/lib/layers.sh
 source "${HASEEN_PATH:-$(dirname "$(readlink -f "$0")")/../share/haseen}/lib/layers.sh"
+BIN_DIR="$(dirname "$(readlink -f "$0")")"
 
 usage() {
     cat <<EOF
@@ -12,6 +13,8 @@ Usage: haseen layer apply <layer...> [--dry-run] [--yes] [-- ARGS]
 ARGS after -- go to the last named layer only (e.g. its own flags):
   haseen layer apply ai -- --backend llama.cpp
 Required layers are applied first. Run 'haseen layer list' for names.
+After each layer it applies, the layer-applied hooks run with the layer's
+name (haseen hook install layer-applied SCRIPT).
 EOF
 }
 
@@ -50,4 +53,7 @@ for n in "${order[@]}"; do
     else
         layer_run_apply "$n"
     fi
+    # The layer-applied hooks (architecture 7), once for each layer this run
+    # applied, with its name; a failing hook is reported, never fatal (plan 200).
+    run "$BIN_DIR/haseen-hook" run layer-applied "$n"
 done

@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # haseen:covers bin/haseen-* share/haseen/default/hypr/** share/haseen/lib/keybinds-scan.lua
+# haseen:covers share/haseen/default/fcitx5/config share/haseen/default/keyd/**
 # haseen:covers share/haseen/shell/plugins/*/manifest.json share/haseen/lib/*
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
@@ -32,9 +33,9 @@ binds='[
 printf '%s\n' "$binds" >"$SANDBOX/binds.json"
 stub hyprctl 'case "$*" in
     "binds -j") cat "$HASEEN_BINDS_FIXTURE" ;;
-    "reload") echo "ok" ;;
+    "reload") echo reload >>"$HASEEN_RELOAD_LOG"; echo "ok" ;;
 esac'
-export HASEEN_BINDS_FIXTURE="$SANDBOX/binds.json"
+export HASEEN_BINDS_FIXTURE="$SANDBOX/binds.json" HASEEN_RELOAD_LOG="$SANDBOX/reloads"
 
 capture haseen keybinds --json
 assert_status "the live binds are read" 0 "$STATUS"
@@ -56,6 +57,14 @@ submap="$(jq -c '.[] | select(.submap == "resize")' <<<"$sheet")"
 assert_eq "a submap bind is grouped by its submap" "Submap: resize" "$(jq -r .category <<<"$submap")"
 assert_eq "a bind without a description falls back to its dispatcher" "resizeactive 10 0" "$(jq -r .action <<<"$submap")"
 assert_eq "a Lua bind no config declares has no readable action" "" "$(jq -r '.[] | select(.description == "Launcher") | .action' <<<"$sheet")"
+
+# --reload is a compositor state change: --dry-run prints it (plan 200).
+capture haseen keybinds --reload --dry-run --json
+assert_status "a dry reload is not a usage error" 0 "$STATUS"
+assert_contains "it prints the reload" "$OUTPUT" "DRYRUN: hyprctl reload"
+assert_eq "and does not reload" "absent" "$([[ -e $HASEEN_RELOAD_LOG ]] && echo present || echo absent)"
+capture haseen keybinds --reload --json
+assert_eq "without --dry-run it reloads" "reload" "$(cat "$HASEEN_RELOAD_LOG" 2>/dev/null)"
 
 capture haseen keybinds
 assert_contains "the terminal sheet groups by category" "$OUTPUT" "Shell"
@@ -164,6 +173,16 @@ press("snap-left-again", HYPER .. "H")
 press("snap-right", HYPER .. "L")
 press("snap-big", HYPER .. "G")
 press("alt-tab", "ALT + TAB")
+
+-- A 2560x1440 panel turned on its side (transform 1). Hyprland still reports
+-- the unrotated width and height, so the screen is 1440x2560, 2536 usable.
+monitor = { x = 0, y = 0, width = 2560, height = 1440, scale = 1, transform = 1,
+  reserved = { left = 0.0, top = 24.0, right = 0.0, bottom = 0.0 } }
+window = { address = "0xBEEF", floating = false, monitor = monitor,
+  at = { x = 0, y = 24 }, size = { x = 1440, y = 2536 } }
+press("portrait-left", HYPER .. "H")
+press("portrait-right", HYPER .. "L")
+press("portrait-max", HYPER .. "F")
 LUA
 
     # hyprmod's file and a persisted toggle both set the same key, so the load
@@ -273,6 +292,16 @@ LUA
     assert_eq "snap 80% is centred in the usable area" \
         "dsp.window.float({action=on})|dsp.window.resize({exact=true,x=1228,y=672})|dsp.window.move({exact=true,x=154,y=108})" \
         "$(snap_presses snap-big)"
+    # A portrait monitor reports its panel's unrotated 2560x1440 (plan 190).
+    assert_eq "snap left on a portrait monitor halves its 1440 width" \
+        "dsp.window.float({action=on})|dsp.window.resize({exact=true,x=720,y=2536})|dsp.window.move({exact=true,x=0,y=24})" \
+        "$(snap_presses portrait-left)"
+    assert_eq "snap right on a portrait monitor stays on screen" \
+        "dsp.window.float({action=on})|dsp.window.resize({exact=true,x=720,y=2536})|dsp.window.move({exact=true,x=720,y=24})" \
+        "$(snap_presses portrait-right)"
+    assert_eq "maximise on a portrait monitor fills it" \
+        "dsp.window.float({action=on})|dsp.window.resize({exact=true,x=1440,y=2536})|dsp.window.move({exact=true,x=0,y=24})" \
+        "$(snap_presses portrait-max)"
 
     # hyprmod loads last of haseen's includes, so its GUI wins over the
     # toggles `haseen toggle …` and `haseen hw …` persisted.
@@ -507,6 +536,23 @@ done
 assert_eq "the system menu has one key" "SUPER+ESCAPE" "$(awk -F'\t' '$3 == "haseen menu system" { print $1 }' <<<"$shipped")"
 assert_eq "the shipped config binds keys" true "$( (($(wc -l <<<"$shipped") > 60)) && echo true || echo false)"
 assert_eq "no key is bound twice" "" "$(cut -f1 <<<"$shipped" | sort | uniq -d)"
+# fcitx5's English <-> Arabic switch is a key Hyprland must leave alone, or the
+# compositor takes it before fcitx5 sees it (plan 190).
+# hypr_combo FCITX_KEY — Super+i as the stub prints it: SUPER+I, modifiers sorted.
+hypr_combo() {
+    local IFS=+ parts key
+    read -ra parts <<<"$1"
+    key="${parts[-1]}"
+    unset 'parts[-1]'
+    local mods
+    mods="$(printf '%s\n' "${parts[@]}" | sed 's/^Control$/CTRL/' | tr '[:lower:]' '[:upper:]' | LC_ALL=C sort | tr '\n' '+')"
+    printf '%s%s\n' "$mods" "${key^^}"
+}
+fcitx_keys="$(sed -n '/^\[Hotkey\/TriggerKeys\]/,/^\[/{s/^[0-9][0-9]*=//p;}' "$REPO/share/haseen/default/fcitx5/config")"
+assert_eq "fcitx5's switch key is read as Hyprland writes it" "SUPER+I" "$(hypr_combo "$fcitx_keys")"
+while IFS= read -r k; do
+    assert_eq "fcitx5's switch $k is not a Hyprland bind" "" "$(bound "$(hypr_combo "$k")")"
+done <<<"$fcitx_keys"
 # Omarchy's universal clipboard chords: the owner's muscle memory for paste.
 for k in C V X; do
     assert_eq "SUPER + $k is a universal clipboard key" "lua:function" "$(bound SUPER+$k | cut -f2)"
@@ -655,12 +701,12 @@ assert_eq "the longest CapsLock key" "CAPSLOCK + BRACKETRIGHT" "$(combo_of "Snap
 assert_eq "its mods stay the modifiers Hyprland matches" '["SUPER","SHIFT","CTRL","ALT"]' \
     "$(jq -c '.[] | select(.description == "Snap left") | .mods' <<<"$OUTPUT")"
 assert_eq "three of the four modifiers are not CapsLock" "SUPER + SHIFT + ALT + H" "$(combo_of "Three modifiers")"
-assert_eq "CapsLock's own rows: hold, the RightAlt chord, tap" \
+assert_eq "CapsLock's own rows: hold, under RightAlt, tap" \
     '[["CAPSLOCK","Hold for SUPER+SHIFT+CTRL+ALT"],["RIGHT ALT + CAPSLOCK","Press for CAPSLOCK"],["CAPSLOCK","Tap for ESCAPE"]]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
 assert_eq "a CapsLock row is keyd's, with its keyd line as the action" '{"dispatcher":"keyd","action":"overload(hyper, esc)"}' \
     "$(jq -c '[.[] | select(.description == "Tap for ESCAPE")][0] | {dispatcher, action}' <<<"$OUTPUT")"
-assert_eq "a chord row names its key and the key held with it" '{"key":"CAPSLOCK","mods":["RIGHT ALT"]}' \
+assert_eq "RightAlt's layer row names its key and the key held with it" '{"key":"CAPSLOCK","mods":["RIGHT ALT"]}' \
     "$(jq -c '.[] | select(.description == "Press for CAPSLOCK") | {key, mods}' <<<"$OUTPUT")"
 
 capture haseen keybinds
@@ -721,8 +767,24 @@ assert_eq "and the layer's first modifiers" "CAPSLOCK + H" "$(combo_of "Snap lef
 printf '[main]\ncapslock+rightalt = a\nrightalt+capslock = b\ncapslock = layer(nav)\n\n[nav]\n[nav:C]\n' >"$root/etc/keyd/default.conf"
 capture haseen keybinds --json
 assert_eq "a chord is its keys in any order, and a header without modifiers is a layer's first" \
-    '[["CAPSLOCK","","layer(nav)"],["RIGHT ALT + CAPSLOCK","Press for B","b"]]' \
+    '[["CAPSLOCK","","layer(nav)"],["RIGHT ALT + CAPSLOCK","Press together for B","b"]]' \
     "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description, .action]]' <<<"$OUTPUT")"
+# A + line in [main] is a chord, both keys within keyd's chord_timeout, so the
+# sheet says so; held under another modifier it is that modifier's layer
+# (plan 190: the shipped RightAlt + CapsLock was a chord and read as a hold).
+printf '[main]\nrightalt+capslock = capslock\n\n[control]\ncapslock = esc\n\n[shift]\nx = y\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a chord is pressed together, a layer's key while its modifier is held" \
+    '[["CTRL + CAPSLOCK","Press for ESCAPE"],["RIGHT ALT + CAPSLOCK","Press together for CAPSLOCK"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
+# keyd names a layer by its header up to the first colon, and compares names
+# case-sensitively (config_get_layer_index's strcmp in keyd 2.6.0's config.c):
+# [altgr:G] is RightAlt's layer, [AltGr] a new layer no key holds.
+printf '[main]\n\n[altgr:G]\ncapslock = capslock\n\n[Control]\ncapslock = esc\n' >"$root/etc/keyd/default.conf"
+capture haseen keybinds --json
+assert_eq "a modifier layer's header may carry its modifiers, and its name is case-sensitive" \
+    '[["RIGHT ALT + CAPSLOCK","Press for CAPSLOCK"]]' \
+    "$(jq -c '[.[] | select(.category == "CapsLock") | [.combo, .description]]' <<<"$OUTPUT")"
 printf '[main]\ncapslock = overload(hyper, esc)\ncapslock+shift = overload(control, esc)\n\n[hyper:CMAS]\n[control:A]\n' >"$root/etc/keyd/default.conf"
 capture haseen keybinds --json
 assert_eq "a modifier set keyd cannot read holds none" "SUPER + SHIFT + CTRL + ALT + H" "$(combo_of "Snap left")"

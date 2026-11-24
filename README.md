@@ -8,13 +8,13 @@ Hyprland (Lua config) and a small Quickshell shell of its own, and it can load
 add-ons made for Omarchy and DankMaterialShell.
 
 - **Clean.** Every part is an opt-in layer. The default is `base chaotic omarchy-repo desktop theme shell`.
-- **No clutter.** One thin bar that flows into a slim frame around the screen. Double-click the bar to make it transparent; its text then takes a colour that contrasts with the wallpaper. The tray hides behind a chevron until you hover over it or pin it. Indicators (privacy dots, stay-awake, do-not-disturb) appear only while something is active. Everything else is a panel opened on demand: menu, launcher, notifications, AI, clipboard, calendar, Wi-Fi, Bluetooth.
+- **No clutter.** One thin bar. A slim frame around the screen is off by default; set `frame.enabled` in your `shell.json` to draw it. Double-click the bar to make it transparent; its text then takes a colour that contrasts with the wallpaper. The tray hides behind a chevron until you hover over it or pin it. Indicators (privacy dots, stay-awake, do-not-disturb) appear only while something is active. Everything else is a panel opened on demand: menu, launcher, notifications, AI, clipboard, calendar, Wi-Fi, Bluetooth.
 - **Light.** The idle shell, with every default widget, measures 176 MiB RSS / 123 MiB PSS with ~0 % CPU on the reference laptop (omarchy-shell beside it: 630 MiB). Sampling lives in one small Rust daemon (`haseen-sidecar`, 3 MiB), not in QML timers: several widgets share one sampler, nothing is read while nothing is shown, and without the daemon the features that need it hide.
 - **Extendable with AI.** Plugins are a `manifest.json` plus QML, checked against a JSON schema (`haseen plugin new/validate/enable`). An agent skill (`haseen ai skill install`) teaches coding agents to do this safely.
 - **Local AI.** Ollama or llama.cpp, listening on 127.0.0.1 only, with a chat panel in the shell.
 - **Secure Boot for Windows dual boot.** sbctl keys are enrolled **with** Microsoft's (2011 and 2023 CAs) and the firmware's, so Windows and anti-cheat keep working. The Limine config hash is enrolled, and a pacman hook re-signs after updates. `haseen boot list` shows what the firmware can start and the power menu has a row per other system: it sets `BootNext` and reboots, so Windows starts once without touching the boot order.
 - **Omarchy and DMS add-ons.** All 23 Omarchy themes are included; their backgrounds are fetched on first use from a pinned commit. Omarchy's menu, workspaces and ttfx screensaver are ported. The compatibility host supports Omarchy bar widgets, panels, services and overlays while preserving their original directories; DMS bar-widget compatibility is unchanged. Imported plugins are opt-in, not sandboxed, and may require their original helper/config backends. DMS can replace the shell entirely (`haseen shell use dms`).
-- **Everyday tools.** Screenshots, screen recording, OCR, QR, colour picker, emoji, reminders, night light, stay awake, do not disturb, CPU/RAM/GPU usage, iPhone-style privacy dots (green camera, orange mic, red recording/share, blue location), media, weather (off by default), clipboard history, Flatpak-first app installs.
+- **Everyday tools.** Screenshots, screen recording, OCR, QR, colour picker, emoji, reminders, night light, stay awake, do not disturb, CPU/RAM/GPU usage, iPhone-style privacy dots (green camera, orange mic, red recording/share, blue location), media, weather, clipboard history, Flatpak-first app installs.
 - **Keys you can see.** `SUPER + F1` opens a searchable sheet of the bindings the compositor actually has, grouped by the section they were written under (`haseen keybinds` prints the same in a terminal). Menu Learn › Keybindings lists them Omarchy's way, and Enter runs the one you pick; Learn › Tmux lists tmux's keys with your config.
 - **Upgrades that are not reinstalls.** `haseen migrate` runs one-off upgrade steps once per user and records them in your state dir; a login notice offers to run what is pending. `install.sh` also seeds haseen's user defaults (`haseen seed user`) on every run: only files you do not have yet are written.
 - **Knows your machine.** `haseen hw match` reads the firmware's DMI identity and lists the quirks that apply to it, from one table; `haseen hw apply` runs each matched fix once and records it, and a quirk nobody has written yet is reported, not hidden.
@@ -97,7 +97,9 @@ NixOS is not supported: the installer refuses it.
 - [`docs/decisions/`](docs/decisions/): ADRs
 - [`plans/README.md`](plans/README.md): the engineering record and its status
 - [`AGENTS.md`](AGENTS.md): conventions and gates (`tools/lint.sh`, `tests/run.sh --affected` before a
-  commit, `tools/check-docs.sh`); `main` runs the full `tests/run.sh` after each merge
+  commit, `tools/check-docs.sh`). CI runs the affected selection on every pull request and on every
+  push to `main`; the full `tests/run.sh` runs only from a manual run of the `ci` workflow or when a
+  change touches a global path (plan 176)
 
 ## Status
 

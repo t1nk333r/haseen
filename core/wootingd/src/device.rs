@@ -117,6 +117,10 @@ fn dev_dir() -> PathBuf {
 struct Node {
     found: Found,
     pages: Vec<u16>,
+    /// The USB device the node's interface belongs to: HID_PHYS without its
+    /// `/inputN` (`usb-0000:00:14.0-2/input2` is `usb-0000:00:14.0-2`), the
+    /// same for every interface of one keyboard (plan 199).
+    phys: String,
 }
 
 /// Every hidraw node belonging to a Wooting keyboard, in sysfs order.
@@ -141,11 +145,14 @@ fn scan() -> Vec<Node> {
         };
         let mut hid_id = "";
         let mut hid_uniq = "";
+        let mut hid_phys = "";
         for line in uevent.lines() {
             if let Some(v) = line.strip_prefix("HID_ID=") {
                 hid_id = v;
             } else if let Some(v) = line.strip_prefix("HID_UNIQ=") {
                 hid_uniq = v;
+            } else if let Some(v) = line.strip_prefix("HID_PHYS=") {
+                hid_phys = v;
             }
         }
         if !hid_id.to_ascii_uppercase().contains(&vid_tag) {
@@ -174,6 +181,10 @@ fn scan() -> Vec<Node> {
                 pid,
             },
             pages: usage_pages(&desc),
+            phys: match hid_phys.rsplit_once("/input") {
+                Some((dev, _)) => dev.to_string(),
+                None => hid_phys.to_string(),
+            },
         });
     }
     nodes
@@ -183,20 +194,29 @@ fn scan() -> Vec<Node> {
 /// `wanted` across ALL nodes: node order is not usage-page order, and picking
 /// per-node would let an earlier 0x1337 node win over the 0xFF55 interface the
 /// firmware actually wants.
-fn find_page(wanted: &[u16]) -> Option<Found> {
-    let nodes = scan();
+fn find_page<'a>(
+    nodes: impl Iterator<Item = &'a Node> + Clone,
+    wanted: &[u16],
+) -> Option<(&'a Node, u16)> {
     for &page in wanted {
-        if let Some(n) = nodes.iter().find(|n| n.pages.contains(&page)) {
-            return Some(Found {
-                path: n.found.path.clone(),
-                usage_page: page,
-                serial: n.found.serial.clone(),
-                pid: n.found.pid,
-            });
+        if let Some(n) = nodes.clone().find(|n| n.pages.contains(&page)) {
+            return Some((n, page));
         }
     }
     None
 }
+
+fn found((n, page): (&Node, u16)) -> Found {
+    Found {
+        path: n.found.path.clone(),
+        usage_page: page,
+        serial: n.found.serial.clone(),
+        pid: n.found.pid,
+    }
+}
+
+const COMMAND_PAGES: [u16; 2] = [CFG_V3_USAGE_PAGE, CFG_USAGE_PAGE];
+const ANALOG_PAGES: [u16; 2] = [ANALOG_INTERFACE_V2, ANALOG_INTERFACE_V1];
 
 /// Locate the command interface. 0xFF53 is never a candidate: it has no OUT
 /// endpoint and carries no command framing.
@@ -204,12 +224,24 @@ fn find_page(wanted: &[u16]) -> Option<Found> {
 /// Returns `None` when no Wooting command interface is present, which is how
 /// the daemon learns the keyboard was unplugged.
 pub fn find() -> Option<Found> {
-    find_page(&[CFG_V3_USAGE_PAGE, CFG_USAGE_PAGE])
+    find_page(scan().iter(), &COMMAND_PAGES).map(found)
 }
 
-/// Locate the analog stream interface (V2 preferred).
+/// Locate the analog stream interface (V2 preferred) of the keyboard `find`
+/// picks: with two Wooting boards attached, the first analog node in sysfs
+/// order may be the other board's (hidraw10 sorts before hidraw9), and its key
+/// travel would light this board's layout and teach FnMap the wrong Fn layer
+/// (plan 199). Without a command interface, the first analog node.
 pub fn find_analog() -> Option<Found> {
-    find_page(&[ANALOG_INTERFACE_V2, ANALOG_INTERFACE_V1])
+    let nodes = scan();
+    match find_page(nodes.iter(), &COMMAND_PAGES) {
+        Some((command, _)) => find_page(
+            nodes.iter().filter(|n| n.phys == command.phys),
+            &ANALOG_PAGES,
+        )
+        .map(found),
+        None => find_page(nodes.iter(), &ANALOG_PAGES).map(found),
+    }
 }
 
 pub struct Device {
@@ -512,11 +544,23 @@ mod tests {
 
         /// Lay down one hidraw node exactly as the kernel presents it.
         fn node(&self, name: &str, hid_id: &str, serial: &str, desc: &[u8]) -> &Fixture {
+            self.node_at(name, hid_id, serial, desc, "usb-0000:00:14.0-2/input0")
+        }
+
+        /// `node`, on the USB port `phys` names.
+        fn node_at(
+            &self,
+            name: &str,
+            hid_id: &str,
+            serial: &str,
+            desc: &[u8],
+            phys: &str,
+        ) -> &Fixture {
             let dir = self.root.join(name).join("device");
             fs::create_dir_all(&dir).expect("node dir");
             fs::write(
                 dir.join("uevent"),
-                format!("DRIVER=hid-generic\nHID_ID={hid_id}\nHID_NAME=Wooting Wooting 60HE+\nHID_UNIQ={serial}\n"),
+                format!("DRIVER=hid-generic\nHID_ID={hid_id}\nHID_NAME=Wooting Wooting 60HE+\nHID_PHYS={phys}\nHID_UNIQ={serial}\n"),
             )
             .expect("uevent");
             fs::write(dir.join("report_descriptor"), desc).expect("descriptor");
@@ -640,6 +684,61 @@ mod tests {
         fs::create_dir_all(fx.root.join("hidraw5").join("device")).expect("bare node");
         fx.node("hidraw6", WOOTING, "A02B", DESC_COMMAND);
         assert_eq!(find().expect("command interface").path, "/dev/hidraw6");
+    }
+
+    /// Two boards: hidraw10 sorts before hidraw9, so the first analog node is
+    /// board A's while the command interface found is board B's. The analog
+    /// stream must be B's own (plan 199).
+    #[test]
+    fn pairs_the_analog_stream_with_the_command_interface() {
+        let fx = Fixture::new("two");
+        fx.node_at(
+            "hidraw9",
+            WOOTING,
+            "A",
+            DESC_COMMAND,
+            "usb-0000:00:14.0-1/input2",
+        )
+        .node_at(
+            "hidraw10",
+            WOOTING,
+            "A",
+            DESC_ANALOG,
+            "usb-0000:00:14.0-1/input3",
+        )
+        .node_at(
+            "hidraw11",
+            WOOTING,
+            "B",
+            DESC_COMMAND,
+            "usb-0000:00:14.0-3/input2",
+        )
+        .node_at(
+            "hidraw12",
+            WOOTING,
+            "B",
+            DESC_ANALOG,
+            "usb-0000:00:14.0-3/input3",
+        );
+        let command = find().expect("command interface");
+        assert_eq!(command.path, "/dev/hidraw11");
+        assert_eq!(find_analog().expect("analog").path, "/dev/hidraw12");
+
+        // A board with no analog node gets none, not the other board's.
+        fs::remove_dir_all(fx.root.join("hidraw12")).expect("drop node");
+        assert!(find_analog().is_none());
+
+        // Without a command interface, any analog node.
+        drop(fx);
+        let fx = Fixture::new("analog-only");
+        fx.node_at(
+            "hidraw7",
+            WOOTING,
+            "A",
+            DESC_ANALOG,
+            "usb-0000:00:14.0-1/input3",
+        );
+        assert_eq!(find_analog().expect("analog").path, "/dev/hidraw7");
     }
 
     #[test]

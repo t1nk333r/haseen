@@ -5,6 +5,7 @@
 # haseen:covers share/haseen/lib/{boot,branding,layers,migrate,omarchy-guard,packages,plymouth,preflight}.sh
 # haseen:covers share/haseen/migrations/1792605416-seal-omarchy-migrations.sh
 # haseen:covers share/haseen/migrations/1792605417-polkit-faillock.sh tests/fixtures/desk-cachyos-amd/**
+# haseen:covers tests/fixtures/cachyos-grub-plain/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
@@ -479,6 +480,27 @@ cp "$dropin" "$prefix/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.c
 capture env HASEEN_SYSROOT="$FIXTURES/cachyos-grub-plain" "$REPO/install.sh" --dry-run --uninstall-tree --prefix "$prefix"
 assert_contains "uninstalling the tree removes it" "$OUTPUT" \
     "DRYRUN: sudo rm -f $prefix/lib/systemd/user/omarchy-migrate-notify.service.d/haseen.conf"
+assert_not_contains "without the base layer's hook there is no hook to remove" "$OUTPUT" "50-haseen-omarchy.hook"
+# The base layer's pacman hook runs PREFIX/bin/haseen as root and base has no
+# remove step, so the tree's uninstall takes it too (plan 186); a hook that
+# runs another haseen stays.
+uroot="$SANDBOX/uninstall-root"
+cp -r "$FIXTURES/cachyos-grub-plain" "$uroot"
+mkdir -p "$uroot/etc/pacman.d/hooks"
+bash -c 'source "$HASEEN_PATH/lib/omarchy-guard.sh"; omarchy_guard_hook_render "$1"' _ "$prefix/bin/haseen" \
+    >"$uroot/etc/pacman.d/hooks/50-haseen-omarchy.hook"
+capture env HASEEN_SYSROOT="$uroot" "$REPO/install.sh" --dry-run --uninstall-tree --prefix "$prefix"
+assert_status "uninstalling with the hook in place succeeds" 0 "$STATUS"
+assert_contains "the hook that runs this prefix's haseen goes with the tree" "$OUTPUT" \
+    "DRYRUN: sudo rm -f /etc/pacman.d/hooks/50-haseen-omarchy.hook"
+capture env HASEEN_SYSROOT="$uroot" "$REPO/install.sh" --dry-run --uninstall-tree --prefix "$prefix/"
+assert_contains "a trailing slash on the prefix names the same haseen" "$OUTPUT" \
+    "DRYRUN: sudo rm -f /etc/pacman.d/hooks/50-haseen-omarchy.hook"
+bash -c 'source "$HASEEN_PATH/lib/omarchy-guard.sh"; omarchy_guard_hook_render /usr/bin/haseen' \
+    >"$uroot/etc/pacman.d/hooks/50-haseen-omarchy.hook"
+capture env HASEEN_SYSROOT="$uroot" "$REPO/install.sh" --dry-run --uninstall-tree --prefix "$prefix"
+assert_not_contains "a hook that runs another haseen stays" "$OUTPUT" "rm -f /etc/pacman.d/hooks/50-haseen-omarchy.hook"
+assert_contains "and the uninstall says so" "$OUTPUT" "runs another haseen than $prefix/bin/haseen; it stays"
 
 # --- haseen doctor ---------------------------------------------------------------
 sandbox omarchy-guard-doctor

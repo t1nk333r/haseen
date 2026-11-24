@@ -73,8 +73,11 @@ if [[ "$*" == "auth login" || "$*" == login ]]; then
             "$payload" "$token" "$token" "$acct" >"$home/auth.json"
         ;;
     grok)
-        printf '{"https://auth.example.com":{"user_id":"%s","email":"%s@example.com","access_token":"%s"}}\n' \
-            "$acct" "$user" "$token" >"$home/auth.json"
+        # FAKE_NO_EMAIL: a login whose token carries no email claim.
+        email="$user@example.com"
+        [[ -z ${FAKE_NO_EMAIL:-} ]] || email=""
+        printf '{"https://auth.example.com":{"user_id":"%s","email":"%s","access_token":"%s"}}\n' \
+            "$acct" "$email" "$token" >"$home/auth.json"
         printf '{"payload":"{\\"settings\\":{\\"subscription_tier_display\\":\\"SuperGrok\\"}}"}\n' >"$home/settings_cache.json"
         ;;
     esac
@@ -429,6 +432,23 @@ FAKE_ACCOUNT=uuid-side FAKE_USER=side haseen agent account add claude Side </dev
 FAKE_ACCOUNT=uuid-side FAKE_USER=side haseen agent account add --reauth side claude </dev/null >/dev/null
 assert_contains "--reauth signs in in the account's own home" "$(logins)" "claude login home=$STATE/claude/side browser="
 assert_eq "the registry gains no account" "2" "$(jq '.accounts | length' "$STATE/claude.json")"
+# Renaming the primary frees the id main. An added account that takes it signs
+# in again in its own home, never in the CLI's, whose login is the primary's
+# (plan 198).
+haseen agent account rename claude main Personal >/dev/null
+FAKE_ACCOUNT=uuid-other FAKE_USER=other haseen agent account add claude Main </dev/null >/dev/null
+assert_eq "an added account may take the freed id main" "main" \
+    "$(jq -r '.accounts[] | select(.primary != true and .label == "Main") | .id' "$STATE/claude.json")"
+: >"$LOG"
+FAKE_ACCOUNT=uuid-other FAKE_USER=other haseen agent account add --reauth main claude </dev/null >/dev/null
+assert_eq "--reauth main signs in that account in its own home" "claude login home=$STATE/claude/main" "$(logins | cut -d' ' -f1-3)"
+assert_eq "the primary's login is untouched" "main@example.com" "$(jq -r .oauthAccount.emailAddress "$HOME/.claude.json")"
+: >"$LOG"
+haseen agent account add --reauth personal claude </dev/null >/dev/null
+assert_eq "the renamed primary signs in again in the CLI's own home" "claude login home=$HOME/.claude" "$(logins | cut -d' ' -f1-3)"
+: >"$LOG"
+haseen agent account add --reauth primary claude </dev/null >/dev/null
+assert_eq "and primary still names it" "claude login home=$HOME/.claude" "$(logins | cut -d' ' -f1-3)"
 
 # --- Codex and Grok identities come from display fields -------------------------
 acct accounts-codex-grok
@@ -442,6 +462,11 @@ assert_eq "Grok's from its login and cached settings" "main@example.com SuperGro
     "$(jq -r '.[] | select(.provider == "grok") | .accounts[0] | .email + " " + .plan' <<<"$OUTPUT")"
 never_printed "Codex and Grok list" "$OUTPUT"
 assert_eq "the Codex credential file is private" "600" "$(stat -c %a "$STATE/codex/second/auth.json")"
+# A login with no email and no name typed is called Account, not "null"
+# (plan 198).
+FAKE_ACCOUNT=grok-2 FAKE_USER=x FAKE_NO_EMAIL=1 haseen agent account add grok </dev/null >/dev/null
+assert_eq "a login without an email is named Account" "account Account" \
+    "$(jq -r '.accounts[] | select(.primary != true) | .id + " " + .label' "$STATE/grok.json")"
 
 # --- a registry that does not parse is never overwritten ---------------------------
 acct accounts-broken

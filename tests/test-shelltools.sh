@@ -95,6 +95,69 @@ assert_contains "bat is the man pager" "$OUTPUT" "MANPAGER=sh -c 'col -bx | bat 
 assert_contains "zoxide is initialised for this shell" "$OUTPUT" "zoxide=bash"
 assert_contains "mise is activated, not advised" "$OUTPUT" "mise=bash"
 
+# --- the rc's own choices stay (plan 191) --------------------------------------
+# The include is the rc's last line, so whatever the rc set above it would be
+# replaced: a MANPAGER of its own, and a Ctrl-R bound by atuin or by hand.
+capture env -i HOME="$HOME" PATH="$TOOLED" MANPAGER='nvim +Man!' bash --noprofile --norc -c \
+    ". '$SHELLDIR/init.sh'; echo \"MANPAGER=\$MANPAGER MANROFFOPT=\${MANROFFOPT-unset}\""
+assert_eq "a MANPAGER set before the include stays" "MANPAGER=nvim +Man! MANROFFOPT=unset" "$OUTPUT"
+# fzf binds Ctrl-R through the distro's key-bindings file, or through `fzf
+# --bash` where there is none; this stub stands in for the second with fzf's
+# own switch (an empty FZF_CTRL_R_COMMAND leaves Ctrl-R alone).
+FZFBIN="$SANDBOX/fzfbin"
+mkdir -p "$FZFBIN"
+cp -a "$BARE"/. "$FZFBIN/"
+cat >"$FZFBIN/fzf" <<'EOF'
+#!/bin/sh
+[ "$1" = --bash ] || exit 0
+cat <<'EOS'
+__fzf_history__() { :; }
+fzf-file-widget() { :; }
+bind -m emacs-standard -x '"\C-t": fzf-file-widget'
+if [[ ${FZF_CTRL_R_COMMAND-x} != "" ]]; then
+    bind -m emacs-standard -x '"\C-r": __fzf_history__'
+fi
+EOS
+EOF
+chmod +x "$FZFBIN/fzf"
+# rc_ctrl_r RC_LINES — Ctrl-R and Ctrl-T in an interactive bash after RC_LINES
+# and the include, one binding per line.
+rc_ctrl_r() {
+    capture env -i HOME="$HOME" PATH="$FZFBIN" bash -c \
+        "bash --noprofile --norc -i -c '$1 . \"$SHELLDIR/init.sh\"; bind -X; echo \"cmd=\${FZF_CTRL_R_COMMAND-unset}\"' 2>/dev/null"
+}
+rc_ctrl_r ''
+assert_contains "a default Ctrl-R is fzf's" "$OUTPUT" '"\C-r" "__fzf_history__"'
+assert_contains "and Ctrl-T is bound" "$OUTPUT" '"\C-t" "fzf-file-widget"'
+rc_ctrl_r 'atuin_search() { :; }; bind -x "\"\\C-r\": atuin_search";'
+assert_contains "a Ctrl-R the rc bound stays" "$OUTPUT" '"\C-r" "atuin_search"'
+assert_not_contains "fzf does not take it" "$OUTPUT" '__fzf_history__"'
+assert_contains "fzf's other keys still come" "$OUTPUT" '"\C-t" "fzf-file-widget"'
+assert_contains "the switch is not left behind" "$OUTPUT" "cmd=unset"
+if command -v zsh >/dev/null 2>&1; then
+    ZFZF="$SANDBOX/zfzf"
+    mkdir -p "$ZFZF"
+    cp -a "$FZFBIN"/. "$ZFZF/"
+    ln -sf "$(PATH=/usr/bin:/bin command -v zsh)" "$ZFZF/zsh"
+    cat >"$ZFZF/fzf" <<'EOF'
+#!/bin/sh
+[ "$1" = --zsh ] || exit 0
+cat <<'EOS'
+fzf-history-widget() { :; }; zle -N fzf-history-widget
+fzf-file-widget() { :; }; zle -N fzf-file-widget
+bindkey '^T' fzf-file-widget
+if [[ ${FZF_CTRL_R_COMMAND-x} != "" ]]; then bindkey '^R' fzf-history-widget; fi
+EOS
+EOF
+    chmod +x "$ZFZF/fzf"
+    capture env -i HOME="$HOME" PATH="$ZFZF" zsh -f -i -c \
+        "mine() { :; }; zle -N mine; bindkey '^R' mine; . '$SHELLDIR/init.sh'; bindkey '^R'; bindkey '^T'"
+    assert_contains "zsh: a Ctrl-R the rc bound stays" "$OUTPUT" '"^R" mine'
+    assert_contains "zsh: fzf's other keys still come" "$OUTPUT" '"^T" fzf-file-widget'
+    capture env -i HOME="$HOME" PATH="$ZFZF" zsh -f -i -c ". '$SHELLDIR/init.sh'; bindkey '^R'"
+    assert_contains "zsh: a default Ctrl-R is fzf's" "$OUTPUT" '"^R" fzf-history-widget'
+fi
+
 # ff needs fzf and says so rather than failing obscurely.
 source_fragment "$BARE" 'ff; echo "rc=$?"'
 assert_contains "ff without fzf explains itself" "$OUTPUT" "ff: needs fzf"
@@ -199,14 +262,23 @@ assert_contains "the toolchain is planned" "$OUTPUT" "DRYRUN: mise use --global 
 assert_not_contains "an rc that includes haseen gets no mise advice" "$OUTPUT" "mise tools reach PATH"
 mv "$HOME/.bashrc" "$HOME/.bashrc.mine"
 mv "$HOME/.zshrc" "$HOME/.zshrc.mine"
+RCMARK="$HOME/.local/state/haseen/rc-include"
+mv "$RCMARK" "$RCMARK.mine"
 capture env HASEEN_INLINE=1 haseen install dev python --dry-run
 assert_contains "without the include, the advice is to seed, not to hand-edit" "$OUTPUT" \
     "mise tools reach PATH through haseen's shell fragment: run 'haseen seed user'"
-assert_not_contains "no hand-edited rc line is suggested" "$OUTPUT" "add to ~/.bashrc"
+assert_not_contains "no hand-edited rc line is suggested" "$OUTPUT" "add this line"
+mv "$RCMARK.mine" "$RCMARK"
+# The seed added its line to ~/.bashrc once already, so it would add nothing
+# now: sending the user to it led nowhere (plan 191). The advice is the line.
+capture env HASEEN_INLINE=1 haseen install dev python --dry-run
+assert_contains "after the seed's one addition, the advice is the line itself" "$OUTPUT" \
+    "add this line to ~/.bashrc: [ -r \"$INCLUDE\" ] && . \"$INCLUDE\""
+assert_not_contains "and not the seed, which would add nothing" "$OUTPUT" "run 'haseen seed user'"
 DEAD='[ -r "/nonexistent/share/haseen/default/shell/init.sh" ] && . "/nonexistent/share/haseen/default/shell/init.sh"'
 printf '%s\n' "$DEAD" >"$HOME/.bashrc"
 capture env HASEEN_INLINE=1 haseen install dev python --dry-run
-assert_contains "an include of a path that is gone activates no mise" "$OUTPUT" "run 'haseen seed user'"
+assert_contains "an include of a path that is gone activates no mise" "$OUTPUT" "add this line to ~/.bashrc"
 mv "$HOME/.bashrc.mine" "$HOME/.bashrc"
 mv "$HOME/.zshrc.mine" "$HOME/.zshrc"
 

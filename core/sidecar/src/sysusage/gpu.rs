@@ -213,10 +213,16 @@ impl Sampler {
         let chosen = pick_gpu(cards.as_deref().unwrap_or(&[]), choice).cloned();
         let Some(chosen) = chosen else {
             self.stop_nvidia();
+            self.gpu.prev_idle_at = None;
             return (cards, None, -1.0);
         };
         if chosen.method != "nvidia" {
             self.stop_nvidia();
+        }
+        if chosen.method != "rc6" {
+            // A card chosen again later starts from -1, not from the idle
+            // residency of the last time it was read (plan 199).
+            self.gpu.prev_idle_at = None;
         }
         let number = |p: PathBuf| read_text(&p).trim().parse::<f64>().ok();
         let value = match chosen.method.as_str() {
@@ -259,7 +265,7 @@ impl Sampler {
         self.gpu.nvidia.as_ref().map_or(-1.0, Nvidia::value)
     }
 
-    fn stop_nvidia(&mut self) {
+    pub(super) fn stop_nvidia(&mut self) {
         if let Some(n) = self.gpu.nvidia.take() {
             n.stop();
         }
@@ -450,6 +456,37 @@ mod tests {
         write(&path, "2700\n");
         let got = s.gpu_sample("auto", t0 + Duration::from_secs(2)).2;
         assert!((got - 15.0).abs() < 1e-9, "residency busy = {got}, want 15");
+    }
+
+    // A card read again after a gap (the GPU set to off, nobody subscribed)
+    // starts from -1, not from the residency of an hour ago (plan 199).
+    #[test]
+    fn gpu_sample_residency_forgets_a_gap() {
+        let root = TempDir::new();
+        card(&root.0, "card0", "i915", "1", &["gt/gt0/rc6_residency_ms"]);
+        let path = root.0.join("sys/class/drm/card0/gt/gt0/rc6_residency_ms");
+        write(&path, "1000\n");
+        let mut s = Sampler::new(&root.bytes());
+        let t0 = Instant::now();
+        s.gpu_sample("auto", t0);
+        assert_eq!(s.gpu_sample("off", t0 + Duration::from_secs(1)).2, -1.0);
+        write(&path, "2700\n");
+        assert_eq!(
+            s.gpu_sample("auto", t0 + Duration::from_secs(3600)).2,
+            -1.0,
+            "after the gap"
+        );
+        write(&path, "4400\n");
+        let got = s.gpu_sample("auto", t0 + Duration::from_secs(3602)).2;
+        assert!((got - 15.0).abs() < 1e-9, "then the share again: {got}");
+
+        s.gpu_sample("auto", t0 + Duration::from_secs(3604));
+        s.idle();
+        assert_eq!(
+            s.gpu_sample("auto", t0 + Duration::from_secs(7200)).2,
+            -1.0,
+            "after idle"
+        );
     }
 
     #[test]

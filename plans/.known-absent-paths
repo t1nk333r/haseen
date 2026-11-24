@@ -5,3 +5,6 @@ gitlab.com/t1nk33r/waydots	external repository
 t1nk333r/omacachy	external repository
 inode/directory	a MIME type, not a path (handoff.md, plan 037)
 t1nk333r/t1nk33r-lab	a GitHub repo, not a path (handoff.md, plan 014)
+share/haseen/sidecar/	tools/build-sidecar.sh's output directory, never tracked (docs/architecture.md)
+share/haseen/sidecar/wootingd	built into share/haseen/sidecar/ by tools/build-sidecar.sh, never tracked
+default/themed/shell.toml.tpl	Omarchy's file (v4.5.0-rc1), cited by docs/architecture.md; not in this repository

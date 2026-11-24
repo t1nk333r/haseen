@@ -60,10 +60,8 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       text: {
         if (!host.todayDay || !host.todayDay.date) return ""
-        var parts = String(host.todayDay.date).split("-")
-        if (parts.length < 3) return ""
-        var stamp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
-        if (isNaN(stamp.getTime())) return ""
+        var stamp = Model.civilDateAtNoon(host.todayDay.date)
+        if (!stamp) return ""
         var formatted = stamp.toLocaleDateString(
           Qt.locale(host.isArabic ? "ar_EG" : "en_US"), "ddd d MMM"
         )

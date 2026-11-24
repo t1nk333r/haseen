@@ -23,7 +23,8 @@ Helium installs it on its next start, enabled, without developer mode.
   install  release $CAIRN_VERSION, the one haseen pins (default; the shell layer
            runs it). The .crx goes to $CAIRN_DIR/<version>/
            and must match its sha256 and Cairn's extension ID, $CAIRN_ID.
-           A later release already set up stays.
+           A later release already set up stays, unless its .crx went
+           before Helium installed it: then the pinned one is set up again.
   status   what Helium has or will install
   update   the latest release, checked against the sha256 GitHub publishes
            for it; Helium updates Cairn on its next start and keeps its settings

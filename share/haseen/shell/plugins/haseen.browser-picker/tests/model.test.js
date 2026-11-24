@@ -37,6 +37,14 @@ test("hostOf strips scheme, path, port and userinfo", () => {
   assert.equal(M.hostOf("example.com/path"), "example.com")
 })
 
+test("hostOf reads a backslash as the browser does", () => {
+  // The browser loads attacker.example; a bank.example rule must not match.
+  assert.equal(M.hostOf("https://attacker.example\\@bank.example/login"), "attacker.example")
+  assert.equal(M.hostOf("https:\\\\attacker.example/x"), "attacker.example")
+  assert.equal(M.hostOf("https://attacker.example\t@bank.example/"), "bank.example")
+  assert.equal(M.hostOf("https://bank.exa\nmple/"), "bank.example")
+})
+
 test("hostOf keeps IPv6 literals intact", () => {
   assert.equal(M.hostOf("http://[::1]:8080/admin"), "[::1]")
 })

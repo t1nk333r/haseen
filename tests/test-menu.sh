@@ -417,6 +417,13 @@ stub xdg-settings "exit 0"
 stub xdg-mime "exit 0"
 capture haseen setup default terminal kitty
 assert_status "default terminal" 0 "$STATUS"
+# The variable is the file's only one: re-setting it keeps the new line
+# (plan 192; grep matched nothing and errexit wiped the file).
+capture haseen setup default terminal foot
+assert_status "re-set the only variable" 0 "$STATUS"
+assert_eq "re-set: the new value, once" "export TERMINAL=foot" "$(grep '^export' "$env_file")"
+capture haseen setup default terminal kitty
+assert_status "re-set again" 0 "$STATUS"
 capture haseen setup default editor zed
 capture haseen setup default browser zen
 assert_contains "env file: terminal" "$(cat "$env_file")" "export TERMINAL=kitty"

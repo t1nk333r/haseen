@@ -157,8 +157,12 @@ cmd_status() {
     printf '%-15s %s\n' 'serial:' "$(jq -r '.serial' <<<"$reply")"
     printf '%-15s %s (%s framing)\n' 'interface:' \
         "$(jq -r '.node' <<<"$reply")" "$(jq -r '.framing' <<<"$reply")"
-    printf '%-15s %s of %s\n' 'active slot:' \
-        "$(jq -r '.active' <<<"$reply")" "$(jq -r '.count' <<<"$reply")"
+    # Slots are not 0..count-1 (three profiles may sit in slots 0, 2 and 3),
+    # so the count goes with the active profile's place in the list, not with
+    # its slot number (plan 199).
+    printf '%-15s %s\n' 'active slot:' "$(jq -r '"\(.active)" + (
+        (.profiles | map(.active) | index(true)) as $i
+        | if $i == null then "" else " (profile \($i + 1) of \(.profiles | length))" end)' <<<"$reply")"
     while IFS=$'\t' read -r slot name named active settings; do
         local marker=' ' suffix=''
         if [[ $active == true ]]; then marker='*'; fi

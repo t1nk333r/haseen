@@ -602,6 +602,15 @@ assert_contains "--search opens a text search" "$(calls)" "xdg-open https://www.
 GRIM_DELAY=0.3 capture haseen search screen --geometry "0,0 10x10" --print
 assert_status "a slow grim still reaches the OCR" 0 "$STATUS"
 assert_eq "and its text is read" "recognised text" "$OUTPUT"
+# Its notifications are in the interface language (plan 200).
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+echo ar >"$XDG_CONFIG_HOME/haseen/language"
+capture haseen search screen --geometry "0,0 10x10"
+assert_contains "in Arabic the copy is announced in Arabic" "$(calls)" "نُسخ النص الموجود في التحديد"
+TESS_TEXT="   " capture haseen search screen --geometry "0,0 10x10"
+assert_contains "and so is a selection without text" "$(calls)" "لم يُعثر على نص"
+assert_contains "with what to do about it" "$(calls)" "حدّد منطقة فيها نص"
+rm "$XDG_CONFIG_HOME/haseen/language"
 
 cap_sandbox search-image
 capture haseen search screen image

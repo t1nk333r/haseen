@@ -65,7 +65,11 @@ while IFS= read -r line; do
     case "$line" in
     *"boolean true"*)
         info "sleep: locking first"
-        haseen shell ipc lock lock || warn "the lock did not answer; sleeping anyway"
+        if ! answer="$(haseen shell ipc lock lock)"; then
+            warn "the lock did not answer; sleeping anyway"
+        elif [[ $answer == unavailable ]]; then
+            warn "no plugin provides the lock (haseen plugin enable haseen.lock); sleeping unlocked"
+        fi
         sleep "$LOCK_GRACE"
         release_inhibitor
         ;;
@@ -75,3 +79,7 @@ while IFS= read -r line; do
     esac
 done < <(dbus-monitor --system \
     "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'")
+# The loop only ends when dbus-monitor does (killed, the bus went away). That
+# is a failure: exiting 0 would leave the unit dead under Restart=on-failure,
+# and every later sleep would go unlocked (plan 196).
+die "dbus-monitor ended; the screen will not be locked before sleep until this restarts"

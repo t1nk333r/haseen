@@ -4,7 +4,7 @@
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }
 # wootingd, the Rust daemon vendored with haseen.wooting (plan 099): its own
-# 57 unit tests (`cargo test --locked`; plan 153 added 8), the lifecycle the
+# 58 unit tests (`cargo test --locked`; plan 153 added 8, plan 199 one), the lifecycle the
 # device-gated design needs (SIGTERM removes the socket, a second daemon is
 # refused and leaves the live owner's socket alone), and
 # tools/build-sidecar.sh building it outside the tree. Nothing here opens a hidraw node: the daemon runs against an empty
@@ -48,7 +48,7 @@ export CARGO_HOME="$OUT/cargo-home" CARGO_TARGET_DIR="$OUT/wootingd-target"
 
 capture cargo test --locked --quiet --manifest-path "$CRATE/Cargo.toml"
 assert_status "cargo test --locked passes" 0 "$STATUS"
-assert_contains "the daemon's 57 unit tests ran" "$OUTPUT" "test result: ok. 57 passed; 0 failed"
+assert_contains "the daemon's 58 unit tests ran" "$OUTPUT" "test result: ok. 58 passed; 0 failed"
 assert_eq "the vendored crate has one dependency" '["parking_lot"]' \
     "$(sed -n '/^\[dependencies\]/,/^\[/p' "$CRATE/Cargo.toml" | sed -n 's/^\([a-z_-]*\) = .*/"\1"/p' | jq -sc .)"
 # The tracked files and nothing else: cargo wrote its target dir elsewhere.

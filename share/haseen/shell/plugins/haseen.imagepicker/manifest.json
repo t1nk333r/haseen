@@ -33,7 +33,7 @@
     "command": {
       "type": "array",
       "default": [],
-      "description": "argv run with the picked path appended; empty means haseen theme bg set (use [\"haseen\", \"theme\", \"wallpaper\"] to build a theme from the image)"
+      "description": "argv run with the picked path appended; empty means haseen theme bg set, and lists only the images it takes (no AVIF) (use [\"haseen\", \"theme\", \"wallpaper\"] to build a theme from the image)"
     },
     "columns": {
       "type": "integer",

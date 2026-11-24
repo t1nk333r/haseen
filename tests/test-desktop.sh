@@ -123,6 +123,21 @@ rm "$root/etc/systemd/system/display-manager.service"
 printf '%s\n' "[default_session]" 'command = "agreety --cmd /bin/sh"' >"$root/etc/greetd/config.toml"
 desktop_dry "$root"
 assert_contains "greetd: packaged default backed up once" "$OUTPUT" "DRYRUN: sudo cp -a /etc/greetd/config.toml /etc/greetd/config.toml.haseen-orig"
+# The haseen greeter chosen, the layer applied from a checkout (plan 196):
+# greetd is never pointed at a tree its owner can edit. A config greetd has
+# (the installed greeter's) stays; with none, tuigreet.
+mkdir -p "$root/etc/haseen"
+echo haseen >"$root/etc/haseen/greeter"
+printf '%s\n' "# Written by haseen layers/desktop. old" "[default_session]" 'command = "/usr/local/bin/haseen-greeter"' >"$root/etc/greetd/config.toml"
+desktop_dry "$root"
+assert_status "greetd: a checkout's apply still succeeds" 0 "$STATUS"
+assert_contains "greetd: says it will not point greetd at a checkout" "$OUTPUT" "not pointing greetd at this tree's greeter"
+assert_not_contains "greetd: the installed greeter's config is kept" "$OUTPUT" "write /etc/greetd"
+rm "$root/etc/greetd/config.toml"
+desktop_dry "$root"
+assert_contains "greetd: with no config, a checkout writes tuigreet's" "$OUTPUT" "--cmd 'systemd-cat -t uwsm uwsm start hyprland.desktop'"
+assert_not_contains "greetd: and never the checkout's greeter" "$OUTPUT" "$REPO/bin/haseen-greeter"
+rm "$root/etc/haseen/greeter"
 
 # --- user files: seeded once, env files converge ---------------------------
 sandbox desk-seed

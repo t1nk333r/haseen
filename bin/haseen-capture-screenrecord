@@ -65,8 +65,37 @@ alive() {
     stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 0
     [[ ${stat##*) } != Z* ]]
 }
-supervisor_pid() { [[ -r $PID_FILE ]] && cat "$PID_FILE" 2>/dev/null || true; }
-active() { alive "$(supervisor_pid)"; }
+# start_time PID — when PID started: field 22 of /proc/PID/stat, in clock
+# ticks since boot. With the PID it names one process; the PID alone may have
+# gone to another process since the one that wrote it died.
+start_time() {
+    local stat
+    stat="$(cat "/proc/$1/stat" 2>/dev/null)" || return 0
+    local -a field
+    read -ra field <<<"${stat##*) }"
+    printf '%s\n' "${field[19]:-}"
+}
+# record PID FILE — the PID and its start time, for recorded() to check.
+record() { printf '%s\n%s\n' "$1" "$(start_time "$1")" >"$2"; }
+# recorded FILE [MARK] — the PID in FILE while that same process runs, else
+# nothing. A SIGKILLed supervisor never removes its files, and its PID may
+# since belong to an editor that a toggle would SIGTERM (plan 199). A file
+# from before plan 199 has no start time: then the process's command line
+# must hold MARK.
+recorded() {
+    local pid="" start="" cmdline
+    { read -r pid && read -r start; } 2>/dev/null <"$1" || true
+    alive "$pid" || return 0
+    if [[ -n $start ]]; then
+        [[ $(start_time "$pid") == "$start" ]] || return 0
+    elif [[ -n ${2:-} ]]; then
+        cmdline="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)" || return 0
+        [[ $cmdline == *"$2"* ]] || return 0
+    fi
+    printf '%s\n' "$pid"
+}
+supervisor_pid() { recorded "$PID_FILE" --supervise; }
+active() { [[ -n $(supervisor_pid) ]]; }
 
 # A flag or pid file whose supervisor is gone is left over from a crash.
 clear_stale() {
@@ -88,7 +117,7 @@ supervise() {
     gsr_pid="" cam_pid=""
     local rc=0
     mkdir -p "$RUN_DIR" "$(dirname "$FLAG")"
-    echo $$ >"$PID_FILE"
+    record $$ "$PID_FILE"
     finish() {
         alive "$cam_pid" && kill "$cam_pid" 2>/dev/null
         rm -f "$FLAG" "$PID_FILE" "$GSR_PID_FILE"
@@ -109,7 +138,7 @@ supervise() {
     set -m
     gpu-screen-recorder "$@" -o "$file" &
     gsr_pid=$!
-    echo "$gsr_pid" >"$GSR_PID_FILE"
+    record "$gsr_pid" "$GSR_PID_FILE"
     date +%s >"$FLAG"
     notify "$(i18n "Screen recording started")" "$(i18n "Run it again to stop")"
 
@@ -128,7 +157,7 @@ supervise() {
 stop_recording() {
     local sup gsr i
     sup="$(supervisor_pid)"
-    gsr="$(cat "$GSR_PID_FILE" 2>/dev/null || true)"
+    gsr="$(recorded "$GSR_PID_FILE")"
     if $DRY_RUN; then
         echo "DRYRUN: kill -INT ${gsr:-$sup} (stop gpu-screen-recorder, supervisor $sup removes $FLAG)"
         return 0

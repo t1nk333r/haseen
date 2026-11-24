@@ -131,6 +131,22 @@ function byteCap(maxBytes) {
   return isFinite(cap) && cap > 0 ? cap : Infinity
 }
 
+function usableSnippet(snippet) {
+  return !!snippet && typeof snippet === "object" && !Array.isArray(snippet) &&
+    typeof snippet.text === "string" && snippet.text.trim().length > 0
+}
+
+function namedSnippet(snippet) {
+  return {
+    name: str(snippet.name).trim() || previewText(snippet.text, NAME_CHARS),
+    text: snippet.text
+  }
+}
+
+// Every entry stays at its place in the file, an unusable one (not an object,
+// blank text) as it was written: `haseen typist type snippet` reads the
+// file's own index, and a pin or delete must not drop what the user wrote
+// there (plan 198). Only snippetRows leaves the unusable ones out.
 function parseSnippets(raw) {
   var config = { version: 1, snippets: [] }
   var parsed = parseJson(raw)
@@ -138,12 +154,7 @@ function parseSnippets(raw) {
   var snippets = Array.isArray(parsed.snippets) ? parsed.snippets : []
   for (var i = 0; i < snippets.length; i++) {
     var snippet = snippets[i]
-    if (!snippet || typeof snippet !== "object" || Array.isArray(snippet)) continue
-    if (typeof snippet.text !== "string" || snippet.text.trim().length === 0) continue
-    config.snippets.push({
-      name: str(snippet.name).trim() || previewText(snippet.text, NAME_CHARS),
-      text: snippet.text
-    })
+    config.snippets.push(usableSnippet(snippet) ? namedSnippet(snippet) : snippet)
   }
   return config
 }
@@ -158,9 +169,9 @@ function snippetRows(config, maxBytes) {
   var snippets = snippetList(config)
   for (var i = 0; i < snippets.length; i++) {
     var snippet = snippets[i]
-    if (!snippet || typeof snippet.text !== "string") continue
-    var name = str(snippet.name).trim() || previewText(snippet.text, NAME_CHARS)
-    rows.push(entryRow("snippet", i, snippet.text, cap, name))
+    if (!usableSnippet(snippet)) continue
+    // i is the file's index, the one the CLI reads.
+    rows.push(entryRow("snippet", i, snippet.text, cap, namedSnippet(snippet).name))
   }
   return rows
 }
@@ -177,12 +188,12 @@ function pinSnippet(config, text, limit) {
   var snippets = snippetList(config)
   for (var i = 0; i < snippets.length; i++) {
     var snippet = snippets[i]
-    if (!snippet || typeof snippet.text !== "string") continue
+    if (!usableSnippet(snippet)) {
+      next.snippets.push(snippet)
+      continue
+    }
     if (snippet.text === value) continue
-    next.snippets.push({
-      name: str(snippet.name).trim() || previewText(snippet.text, NAME_CHARS),
-      text: snippet.text
-    })
+    next.snippets.push(namedSnippet(snippet))
   }
   next.snippets = next.snippets.slice(0, max)
   return next
@@ -195,11 +206,7 @@ function removeSnippet(config, index) {
   for (var i = 0; i < snippets.length; i++) {
     if (i === drop) continue
     var snippet = snippets[i]
-    if (!snippet || typeof snippet.text !== "string") continue
-    next.snippets.push({
-      name: str(snippet.name).trim() || previewText(snippet.text, NAME_CHARS),
-      text: snippet.text
-    })
+    next.snippets.push(usableSnippet(snippet) ? namedSnippet(snippet) : snippet)
   }
   return next
 }

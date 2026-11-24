@@ -176,6 +176,23 @@ assert_contains "update again: nothing to do" "$OUTPUT" "Cairn 9.9.0 is already 
 capture haseen setup cairn
 assert_contains "the pinned install never downgrades" "$OUTPUT" "Cairn 9.9.0 stays (newer than haseen's pinned 9.8.7)"
 assert_eq "still 9.9.0" 9.9.0 "$(jq -r .external_version "$JSON")"
+# A later version whose .crx went before Helium read it is repaired by the
+# command status names (plan 192); one Helium installed stays.
+mv "$CDIR/9.9.0" "$SANDBOX/kept-9.9.0"
+rm -rf "$XDG_CONFIG_HOME/net.imput.helium/Default/Extensions/$TEST_ID"
+mkdir -p "$XDG_CONFIG_HOME/net.imput.helium/Default/Extensions/$TEST_ID/9.9.0_0"
+capture haseen setup cairn
+assert_contains "installed in Helium: the later version stays" "$OUTPUT" "Cairn 9.9.0 stays"
+rmdir "$XDG_CONFIG_HOME/net.imput.helium/Default/Extensions/$TEST_ID/9.9.0_0"
+capture haseen setup cairn status
+assert_contains "status: the .crx is gone" "$OUTPUT" "cairn-9.9.0.crx is gone before Helium installed it (haseen setup cairn)"
+capture haseen setup cairn
+assert_status "haseen setup cairn repairs it" 0 "$STATUS"
+assert_contains "and says why" "$OUTPUT" "Cairn 9.9.0's .crx is gone and Helium never installed it"
+assert_eq "Helium is pointed at the pin again" "$CDIR/9.8.7/cairn-9.8.7.crx 9.8.7" \
+    "$(jq -r '"\(.external_crx) \(.external_version)"' "$JSON")"
+capture haseen setup cairn status
+assert_contains "status: handed over again" "$OUTPUT" "ok: Cairn 9.8.7 handed to Helium"
 
 echo "{\"extensions\":{\"external_uninstalls\":[\"$TEST_ID\"]}}" >"$XDG_CONFIG_HOME/net.imput.helium/Default/Preferences"
 capture haseen setup cairn status

@@ -183,7 +183,7 @@ assert_status "record start" 0 "$STATUS"
 assert_contains "record start reports the file" "$OUTPUT" "Recording to $HOME/VIDEOS/screenrecording-"
 assert_eq "flag exists while recording" yes "$([[ -e $FLAG ]] && echo yes)"
 assert_eq "the flag holds the start in epoch seconds" yes "$([[ $(head -n1 "$FLAG") =~ ^[0-9]+$ ]] && echo yes)"
-sup="$(cat "$XDG_RUNTIME_DIR/haseen-screenrecord/pid" 2>/dev/null)"
+sup="$(head -n1 "$XDG_RUNTIME_DIR/haseen-screenrecord/pid" 2>/dev/null)"
 assert_eq "supervisor alive" yes "$(kill -0 "$sup" 2>/dev/null && echo yes)"
 assert_contains "recorder got the region" "$(<"$CALLS")" "gsr -w 100x100+0+0"
 capture haseen capture screenrecord
@@ -198,7 +198,7 @@ assert_status "--stop with nothing running" 1 "$STATUS"
 
 # Recorder crash: the supervisor's trap still removes the flag.
 haseen capture screenrecord --geometry "0,0 100x100" >/dev/null 2>&1
-gsr="$(cat "$XDG_RUNTIME_DIR/haseen-screenrecord/gsr.pid" 2>/dev/null)"
+gsr="$(head -n1 "$XDG_RUNTIME_DIR/haseen-screenrecord/gsr.pid" 2>/dev/null)"
 kill -9 "$gsr" 2>/dev/null
 wait_for no_flag || true
 assert_eq "flag removed when the recorder crashes" no "$([[ -e $FLAG ]] && echo yes || echo no)"
@@ -206,8 +206,8 @@ assert_contains "crash notified" "$(<"$CALLS")" "Screen recording saved"
 
 # Supervisor SIGKILLed: flag is stale; the next run clears it.
 haseen capture screenrecord --geometry "0,0 100x100" >/dev/null 2>&1
-sup="$(cat "$XDG_RUNTIME_DIR/haseen-screenrecord/pid" 2>/dev/null)"
-gsr="$(cat "$XDG_RUNTIME_DIR/haseen-screenrecord/gsr.pid" 2>/dev/null)"
+sup="$(head -n1 "$XDG_RUNTIME_DIR/haseen-screenrecord/pid" 2>/dev/null)"
+gsr="$(head -n1 "$XDG_RUNTIME_DIR/haseen-screenrecord/gsr.pid" 2>/dev/null)"
 kill -9 "$sup" 2>/dev/null
 kill -9 "$gsr" 2>/dev/null
 sleep 0.2
@@ -220,12 +220,29 @@ assert_contains "stale flag cleared" "$OUTPUT" "Cleared a stale recording flag"
 assert_status "stale --stop then reports not recording" 1 "$STATUS"
 assert_eq "stale flag gone" no "$([[ -e $FLAG ]] && echo yes || echo no)"
 
+# The killed supervisor's PID went to another process of this user since:
+# the toggle must start afresh, not SIGTERM that process (plan 199). Both the
+# file this version writes (PID, start time) and an older one-line file.
+sleep 30 &
+other=$!
+for pidfile in "$(printf '%s\n%s' "$other" 1)" "$other"; do
+    mkdir -p "$XDG_RUNTIME_DIR/haseen-screenrecord"
+    printf '%s\n' "$pidfile" >"$XDG_RUNTIME_DIR/haseen-screenrecord/pid"
+    printf '%s\n' "$other" >"$XDG_RUNTIME_DIR/haseen-screenrecord/gsr.pid"
+    date +%s >"$FLAG"
+    capture haseen capture screenrecord --stop
+    assert_eq "a reused supervisor PID is stale ($(wc -l <<<"$pidfile")-line file)" "1|Cleared a stale recording flag" "$STATUS|$(head -n1 <<<"$OUTPUT")"
+    assert_eq "and the process holding it now is left alone" yes "$(kill -0 "$other" 2>/dev/null && echo yes)"
+done
+kill "$other" 2>/dev/null || true
+wait "$other" 2>/dev/null || true
+
 # --- reminders ---------------------------------------------------------------
 trig_sandbox trigger-reminder
 capture haseen reminder set 10 call mum
 assert_status "reminder set" 0 "$STATUS"
 assert_contains "systemd-run timer" "$(<"$CALLS")" "systemd-run --user --quiet --collect --on-active=10m --unit=haseen-reminder-10m-"
-unit="$(grep -o 'haseen-reminder-10m-[0-9]*' "$CALLS" | head -n1)"
+unit="$(grep -o 'haseen-reminder-10m-[0-9-]*' "$CALLS" | head -n1)"
 assert_eq "message saved" "call mum" "$(cat "$XDG_RUNTIME_DIR/haseen-reminders/$unit.message" 2>/dev/null)"
 next=$((($(date +%s) + 600) * 1000000))
 stub systemctl "case \"\$*\" in
@@ -234,9 +251,42 @@ stub systemctl "case \"\$*\" in
 esac"
 capture haseen reminder show --json
 assert_eq "show lists the pending reminder only" "call mum|1" "$(jq -r '"\(.[0].message)|\(length)"' <<<"$OUTPUT")"
+assert_eq "its JSON keeps the documented fields" '["at","atTime","message","remainingSeconds","unit"]' "$(jq -c '.[0] | keys' <<<"$OUTPUT")"
 capture haseen reminder clear
 assert_contains "clear stops timers" "$(<"$CALLS")" "systemctl --user stop haseen-reminder-*.timer"
 assert_eq "clear removes messages" "" "$(ls "$XDG_RUNTIME_DIR/haseen-reminders")"
+
+# Two reminders of the same length set within one second get their own units
+# and keep their own messages (plan 200).
+trig_sandbox trigger-reminder-twice
+stub date 'if [ "$*" = "+%s" ]; then echo 1700000000; else exec /usr/bin/date "$@"; fi'
+haseen reminder set 5 stand up >/dev/null
+haseen reminder set 5 drink water >/dev/null
+units="$(grep -o 'haseen-reminder-5m-[0-9-]*' "$CALLS" | sort -u)"
+assert_eq "two reminders in one second are two units" 2 "$(grep -c . <<<"$units")"
+assert_eq "and keep their own messages" "drink water|stand up" \
+    "$(for u in $units; do cat "$XDG_RUNTIME_DIR/haseen-reminders/$u.message"; echo; done | sort | paste -sd'|')"
+
+# The default message is the interface language's on the toast, English in
+# the terminal and in what show --json reads back (plan 200).
+trig_sandbox trigger-reminder-ar
+mkdir -p "$XDG_CONFIG_HOME/haseen"
+echo ar >"$XDG_CONFIG_HOME/haseen/language"
+capture haseen reminder set 3
+assert_contains "the terminal line stays English" "$OUTPUT" "Your 3 minutes are up"
+assert_contains "the timer's toast is Arabic" "$(<"$CALLS")" "انقضت دقائقك الـ3"
+next=$((($(date +%s) + 180) * 1000000))
+stub systemctl "case \"\$*\" in
+*list-timers*) echo '[{\"unit\":\"haseen-reminder-3m-1700000000-42.timer\",\"next\":$next}]' ;;
+esac"
+capture haseen reminder show --json
+assert_eq "show --json keeps the English default" "Your 3 minutes are up" "$(jq -r '.[0].message' <<<"$OUTPUT")"
+: >"$CALLS"
+capture haseen reminder show --notify
+assert_contains "show --notify lists it in Arabic" "$(<"$CALLS")" "التذكيرات القادمة"
+assert_contains "its time left too" "$(<"$CALLS")" " دقيقة  انقضت دقائقك الـ3"
+assert_not_contains "with no English left in it" "$(<"$CALLS")" "minutes are up"
+rm "$XDG_CONFIG_HOME/haseen/language"
 
 # --- toggles and hardware (real runs against the fake hyprctl) ----------------
 trig_sandbox trigger-toggle live
