@@ -3,7 +3,7 @@
 # haseen:covers share/haseen/default/hypr/{binds,windowrules}.lua share/haseen/layers/desktop/packages.txt
 # haseen:covers share/haseen/migrations/1792634179-omasnap.sh share/haseen/seeds/80-capture.sh
 # haseen:covers share/haseen/omarchy/bin/omarchy-{capture-screenshot,clipboard-open}
-# haseen:covers tests/fixtures/desk-cachyos-amd/**
+# haseen:covers tests/fixtures/desk-cachyos-amd/** tests/fixtures/seeds-plain/**
 # Run through tests/run.sh: it sources tests/lib.sh, whose sandbox moves HOME
 # off the live machine. Run directly, the fixtures land in the real ~/.config.
 [[ -v TESTS_RUN ]] || { echo "run it as: tests/run.sh ${BASH_SOURCE[0]}" >&2; return 2 2>/dev/null || exit 2; }

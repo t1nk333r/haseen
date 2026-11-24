@@ -362,7 +362,7 @@ state, IPC targets stay single, and a click opens their own popup as in the
 bar.
 Its window spans the bar edge from the popups' origin, transparent and without
 input outside the card, so native panels open under the widget and Omarchy
-popups (`Ui/KeyboardPanel`) below the panel; the panel stays open under such a
+popups (`Ui/KeyboardPanel.qml`) below the panel; the panel stays open under such a
 popup and closes with it. Escape or a click outside closes it.
 
 **Dragging** (plan 112, after Omarchy 4.5's bar) needs no mode. A press on a

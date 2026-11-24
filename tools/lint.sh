@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # tools/lint.sh — the static gate. Run before every commit, with
 # tests/run.sh --affected (plan 100).
-#   bash -n + shellcheck --severity=warning -x  over every shell file
+#   bash -n + shellcheck --severity=warning -x  over every shell file: install.sh,
+#                                               tests/*.sh and every script under
+#                                               bin/, share/haseen/ and tools/
 #   luac -p                                     over every Lua file (Hyprland)
 #   qmllint (if present)                        over the Quickshell shell
 #   jq empty                                    over every JSON file
@@ -21,16 +23,20 @@ SHELLCHECK=${SHELLCHECK:-shellcheck}
 QMLLINT=${QMLLINT:-$(command -v qmllint || echo /usr/lib/qt6/bin/qmllint)}
 fail=0
 
+# Picked by content, not by name or place: a shell shebang or a shellcheck
+# directive on the first line, or a .sh name. The system-sleep hook, which runs
+# as root on every resume, a libexec helper and the DMS IPC translator have
+# neither a .sh name nor a bin/ directory (plan 201). Symbolic links (the
+# omarchy-* names of share/haseen/omarchy/dispatch) are linted as their target.
 mapfile -t sh_files < <(
     {
-        printf '%s\n' install.sh tools/*.sh tests/*.sh share/haseen/omarchy/dispatch
-        find bin -type f
-        find share/haseen -type f \( -name '*.sh' -o -path '*/bin/*' \)
-    } | sort -u | while read -r f; do
-        [[ -f $f ]] || continue
-        head -n1 "$f" | grep -qE '^#!.*(ba)?sh|shellcheck shell=' && echo "$f"
-        [[ $f == *.sh ]] && ! head -n1 "$f" | grep -qE '^#!.*(ba)?sh|shellcheck shell=' && echo "$f"
-    done | sort -u
+        printf '%s\0' install.sh tests/*.sh
+        find bin share/haseen tools -type f -print0
+    } | sort -zu | LC_ALL=C xargs -0 awk '
+        FNR == 1 {
+            if ($0 ~ /^#!.*(ba)?sh|shellcheck shell=/ || FILENAME ~ /[.]sh$/) print FILENAME
+            nextfile
+        }'
 )
 
 for f in "${sh_files[@]}"; do
