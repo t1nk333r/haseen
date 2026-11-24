@@ -45,6 +45,22 @@ assert_contains "schema has provides" "$(jq -r '.properties | keys | join(" ")' 
 while read -r id; do
     assert_eq "default shell.json id $id is a built-in" "yes" "$([[ -r $SHELL_DIR/plugins/$id/manifest.json ]] && echo yes || echo no)"
 done < <(jq -r '[.bar.left, .bar.center, .bar.right, .services] | add | .[]' "$HASEEN_PATH/default/shell.json")
+# `permissions` is what plugin info and validate show a reviewer
+# (architecture 5.2), so a built-in declares what its code does: running a
+# process (Process, execDetached, Apps.launch) is exec, writing a file
+# through FileView.setText is files:write (plan 196).
+undeclared=""
+for dir in "$SHELL_DIR"/plugins/*/; do
+    id="$(basename "$dir")"
+    perms="$(jq -r '(.permissions // []) | join(" ")' "$dir/manifest.json")"
+    if grep -rqE --include='*.qml' 'Process *\{|execDetached\(|Apps\.launch\(' "$dir" && [[ " $perms " != *" exec "* ]]; then
+        undeclared+="$id: exec"$'\n'
+    fi
+    if grep -rqE --include='*.qml' '\.setText\(' "$dir" && [[ " $perms " != *" files:write "* ]]; then
+        undeclared+="$id: files:write"$'\n'
+    fi
+done
+assert_eq "built-in plugins declare exec and files:write when their code needs them" "" "$undeclared"
 # Widgets take colours from Theme only.
 # Bundled third-party icon artwork (haseen.omarr's Dashboard Icons) keeps its
 # own colours; the rule is about how widgets are drawn.
