@@ -96,6 +96,46 @@ assert_eq 'reasons: all audited versions installed' '5.6.4-1 1-1 1-1' \
 assert_eq 'reasons: no pending bookkeeping is left behind' no \
     "$([[ -e $ROOT/var/lib/haseen/vapt/reasons-pending ]] && echo yes || echo no)"
 
+# Two selected roots where the second is in the first one's closure: the first
+# commit installs both, the second root's own row is then exact. The second
+# stays explicit, as `pacman -S whois libdep` records it (plan 195).
+commit_case vapt-commit-reasons-two-roots
+vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL||libdep,newdep" 'extra|libdep|1-1|https://example.org/libdep' \
+    'extra|newdep|1-1|https://example.org/newdep'
+vapt_package whois 5.6.4-1
+vapt_package libdep 1-1
+vapt_package newdep 1-1
+{ row whois 5.6.4-1; row libdep 1-1; row newdep 1-1; } >"$VAPT_PLAN"
+cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
+vapt_api pacman-run --yes extra/whois extra/libdep
+assert_status 'two roots: both rows commit' 0 "$STATUS"
+assert_contains 'two roots: the second root is already exact' "$OUTPUT" 'STATE[extra/libdep]=already-exact'
+assert_eq 'two roots: the first root is explicit' explicit "$(installed_field whois reason)"
+assert_eq 'two roots: the selected root in its closure stays explicit' explicit "$(installed_field libdep reason)"
+assert_eq 'two roots: an unselected new dependency is a dependency' depend "$(installed_field newdep reason)"
+
+# A refusal quotes the archive member name; terminal escapes in it arrive
+# escaped, never raw, in the reason a report row and the terminal show
+# (plan 195).
+commit_case vapt-commit-escaped-member
+vapt_repos "extra|whois|5.6.4-1|$WHOIS_URL"
+vapt_package whois 5.6.4-1
+pkg="$SANDBOX/packages/whois"
+evil=$'subject\e]0;pwned\a.service'
+mkdir -p "$pkg/usr/lib/systemd/system/multi-user.target.wants"
+ln -s /usr/lib/systemd/system/whois.service "$pkg/usr/lib/systemd/system/multi-user.target.wants/$evil"
+tar -czf "$SANDBOX/archives/whois-5.6.4-1-x86_64.pkg.tar.gz" -C "$pkg" .PKGINFO usr
+_vapt_digests
+row whois 5.6.4-1 >"$VAPT_PLAN"
+cp "$VAPT_PLAN" "$VAPT_LIVE_PLAN"
+vapt_api pacman --yes extra/whois
+assert_status 'escaped member: the enabled link is refused' 2 "$STATUS"
+assert_contains 'escaped member: the refusal names the link' "$OUTPUT" 'incoming enabled systemd unit link/path'
+assert_contains 'escaped member: ESC and BEL are shown escaped' "$OUTPUT" 'subject\x1b]0;pwned\x07.service'
+assert_not_contains 'escaped member: no raw ESC reaches the output' "$OUTPUT" $'\e'
+assert_not_contains 'escaped member: no raw BEL reaches the output' "$OUTPUT" $'\a'
+assert_eq 'escaped member: nothing is installed' absent "$(installed_field whois reason)"
+
 # A run that stops between the commit and the dependency bookkeeping leaves a
 # root record; the next transaction finishes it, even with the target exact.
 commit_case vapt-commit-reasons-interrupted

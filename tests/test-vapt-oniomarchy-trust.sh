@@ -255,3 +255,25 @@ vapt_onio_arch aarch64
 vapt_api repo-enable --yes
 assert_status 'an unsupported architecture is refused' 1 "$STATUS"
 assert_eq 'unsupported architecture: nothing fetched' '' "$(vapt_calls curl)$(vapt_calls gpg)"
+
+# An interrupt during approval (here a TERM while the database downloads,
+# after both stages exist) leaves neither the root /var/cache/haseen-vapt.*
+# stage nor the user transaction stage behind (plan 195).
+trust_case vapt-onio-trust-interrupted
+command mv "$SANDBOX/stubs/curl" "$SANDBOX/stubs/curl-served"
+cat >"$SANDBOX/stubs/curl" <<STUB
+#!/bin/sh
+case "\$*" in
+*/oniomarchy.db) printf 'interrupted\n' >>'$CALLS/interrupt'; kill -TERM "\$PPID"; exit 143 ;;
+esac
+exec '$SANDBOX/stubs/curl-served' "\$@"
+STUB
+chmod +x "$SANDBOX/stubs/curl"
+vapt_api repo-enable --yes
+assert_status 'interrupted approval exits as terminated' 143 "$STATUS"
+assert_eq 'the interrupt came after staging' interrupted "$(vapt_calls interrupt)"
+assert_eq 'interrupted approval: no root stage is left' '' \
+    "$(find "$ROOT/var/cache" -maxdepth 1 -name 'haseen-vapt.*' 2>/dev/null)"
+assert_eq 'interrupted approval: no user stage is left' '' \
+    "$(find "$XDG_CACHE_HOME/haseen/vapt" "$ROOT$XDG_CACHE_HOME/haseen/vapt" -maxdepth 1 -name 'transaction.*' 2>/dev/null)"
+assert_eq 'interrupted approval: not approved' no "$(approved)"
