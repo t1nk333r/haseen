@@ -15,7 +15,7 @@
   35-auditor audit)
 - **State**: DONE 2026-11-24 (`tests/test-menu.sh` 313/313,
   `tests/test-mobile.sh` 195/195, `tests/test-network-panel.sh` 95/95,
-  `tests/test-drive.sh` 17/17, `tests/test-webapp.sh` 54/54,
+  `tests/test-drive.sh` 17/17, `tests/test-webapp.sh` 58/58,
   `tests/test-helium-cairn.sh` 69/69; every new check fails with the old
   code)
 
@@ -172,15 +172,19 @@ line is in `share/haseen/omarchy/bin/omarchy-webapp-install:124`. With the
 old code the new test shows
 `domain=https://me:pw@intranet.example.com:8443/board?team=x&token=abc&sz=256`.
 
-**Fix.** `favicon_host` (`bin/haseen-webapp-install:73-89`, and the same
-function in `omarchy-webapp-install:108-124`) keeps only the host: no scheme,
+**Fix.** `favicon_host` (`bin/haseen-webapp-install:77-92`, and the same
+function in `omarchy-webapp-install:112-127`) keeps only the host: no scheme,
 path, query, fragment, user info or port; a bracketed IPv6 literal stays
-whole; anything outside `[A-Za-z0-9.-]` is percent-encoded byte by byte
-(`bücher.example` is sent as `b%C3%BCcher.example`).
+whole, its brackets and colons percent-encoded. A host with a non-ASCII
+(IDN) character makes it fail, and the Google fallback is skipped: Google
+looks hosts up in punycode, so percent-encoded UTF-8 would only miss, and
+haseen has no punycode encoder it can count on (see Review).
 
 **Test.** `tests/test-webapp.sh` stubs curl to log each URL and answer only
 Google, as for a site behind a login: both installers send
-`domain=intranet.example.com&sz=256` and never `token`.
+`domain=intranet.example.com&sz=256` and never `token`. For
+`https://münchen.example/rathaus` neither installer asks Google, and
+`haseen webapp install` fails with "could not fetch an icon".
 
 **Rejected.** Dropping the Google fallback and asking for an icon: the
 fallback is what makes `haseen webapp install NAME URL` work for most sites
@@ -214,3 +218,20 @@ API at update time and is not stored, and an unchecked download is what
 `cairn_update` refuses. Changing the status hint to `haseen setup cairn
 update`: it would leave the default command, which the shell layer runs, a
 no-op in a broken state.
+
+## Review
+
+The independent Sonnet review of the first head approved it with two nits.
+
+- `favicon_host` percent-encoded a non-ASCII host as raw UTF-8 bytes
+  (`m%C3%BCnchen.de`), which Google's favicon service, keyed by punycode,
+  would likely miss. Taken: an IDN host now skips the Google fallback in both
+  installers, and `tests/test-webapp.sh` checks that no Google request goes
+  out for `münchen.example`. Converting to punycode was rejected: `idn2` is
+  not a dependency of any layer, and a hand-written encoder for one
+  last-resort icon lookup is more code than the case deserves. Such a site
+  still installs from its own `apple-touch-icon` or with an icon passed on
+  the command line.
+- One check in `tests/test-agent-accounts.sh` ("and says where a plain CLI
+  follows it") fails in the affected selection. It fails the same way on the
+  base commit, outside this plan's files, so it is left to a separate fix.

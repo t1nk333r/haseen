@@ -70,6 +70,15 @@ capture "$HASEEN_PATH/omarchy/bin/omarchy-webapp-install" Board2 'https://intran
 assert_status "Omarchy's installer: the favicon fallback installs" 0 "$STATUS"
 assert_eq "Omarchy's installer sends the host alone too" "https://www.google.com/s2/favicons?domain=intranet.example.com&sz=256" \
     "$(grep google "$SANDBOX/curl.log" | tail -n1)"
+# A non-ASCII (IDN) host skips Google: it wants punycode, and percent-encoded
+# UTF-8 would only miss. Without the site's own icon the install says so.
+: >"$SANDBOX/curl.log"
+capture haseen webapp install Stadt 'https://münchen.example/rathaus'
+assert_status "an IDN host without a site icon fails" 1 "$STATUS"
+assert_contains "and asks for an icon" "$OUTPUT" "could not fetch an icon"
+assert_not_contains "Google is not asked for an IDN host" "$(cat "$SANDBOX/curl.log")" "google"
+capture "$HASEEN_PATH/omarchy/bin/omarchy-webapp-install" Stadt2 'https://münchen.example/rathaus' "" stadt-cmd
+assert_not_contains "nor by Omarchy's installer" "$(cat "$SANDBOX/curl.log")" "google"
 curl_stub
 
 # --- refusals ------------------------------------------------------------------
