@@ -109,12 +109,22 @@ def norm(value):
 
 
 def field_data(text):
+    """A libalpm desc/depends/files record. As libalpm reads it, a %KEY%
+    header opens a block only at a block start (the first line or after a
+    blank line), and a list runs to the next blank line, so a value spelled
+    %NAME% (a group or licence a package chose) stays a value and never
+    rewrites the name, version or URL. A repeated key is malformed (plan 195)."""
     data, key = {}, None
     for line in text.splitlines():
-        if line.startswith('%') and line.endswith('%'):
-            key = line.strip('%').lower()
-            data[key] = []
-        elif line and key:
+        if not line:
+            key = None
+        elif key is None:
+            if len(line) > 2 and line.startswith('%') and line.endswith('%'):
+                key = line[1:-1].lower()
+                if key in data:
+                    raise ValueError('malformed package metadata: repeated %' + key.upper() + '%')
+                data[key] = []
+        else:
             data[key].append(line)
     scalar = ('name', 'version', 'url', 'filename', 'base', 'sha256sum')
     return {k: (v[0] if v else '') if k in scalar else v for k, v in data.items()}
@@ -572,6 +582,14 @@ def emit_snapshot(root, offline):
 
 # Tab/newline (field- and row-breaking) and any other C0/C1 control or DEL.
 CONTROL = re.compile('[\x00-\x1f\x7f-\x9f]')
+# Directories systemd reads units from (system and user, including the default
+# $XDG_CONFIG_DIRS), the dependency directories that enable a unit by their
+# presence (systemd.unit(5): .wants/, .requires/ and .upholds/), and the unit
+# dependencies that start another unit when added through a drop-in.
+SYSTEMD_ROOTS = ('etc/systemd/', 'usr/lib/systemd/', 'lib/systemd/', 'usr/local/lib/systemd/',
+                 'usr/share/systemd/', 'usr/local/share/systemd/', 'run/systemd/', 'etc/xdg/systemd/')
+SYSTEMD_ENABLING = ('.wants', '.requires', '.upholds')
+SYSTEMD_DEPENDENCY = re.compile(r'^[ \t]*(?:Wants|Requires|BindsTo|Upholds|OnFailure|OnSuccess)[ \t]*=', re.M)
 
 
 def emit_safe(*fields):
@@ -1258,15 +1276,23 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     for filename in filenames:
         _, _, kinds, contents = snapshot(filename)
         names = {}
-        for name, (kind, _, _, raw, *_) in kinds.items():
+        for name, (kind, _, hardlink, raw, *_) in kinds.items():
             member = raw + ('/' if kind == stat.S_IFDIR and not raw.endswith('/') else '')
             if name.startswith('/') or '..' in Path(name).parts:
                 raise ValueError('unsafe archive member')
-            if (name.startswith(('etc/systemd/', 'usr/lib/systemd/', 'lib/systemd/', 'usr/local/lib/systemd/',
-                                 'usr/share/systemd/', 'usr/local/share/systemd/', 'run/systemd/'))
-                    and (any(p.endswith(('.wants', '.requires')) for p in Path(name).parts[:-1])
-                         or (not member.endswith('/') and name.endswith(('.wants', '.requires'))))):
-                raise ValueError('incoming enabled systemd unit link/path ' + name)
+            if name.startswith(SYSTEMD_ROOTS):
+                parts = Path(name).parts
+                if (any(p.endswith(SYSTEMD_ENABLING) for p in parts[:-1])
+                        or (not member.endswith('/') and name.endswith(SYSTEMD_ENABLING))):
+                    raise ValueError('incoming enabled systemd unit link/path ' + name)
+                # A drop-in that adds a starting dependency to an existing unit
+                # (multi-user.target.d/x.conf with Wants=x.service) enables x
+                # as surely as a .wants link. One that cannot be read here
+                # (a link or hardlink body) is not reviewable either.
+                if kind != stat.S_IFDIR and len(parts) > 1 and parts[-2].endswith('.d') and name.endswith('.conf'):
+                    body = contents.get(name) if kind == stat.S_IFREG and not hardlink else None
+                    if body is None or SYSTEMD_DEPENDENCY.search(body.decode('utf-8', 'surrogateescape')):
+                        raise ValueError('incoming systemd drop-in adds a starting dependency ' + name)
             names[name] = member
         metadata = dict(metadata_texts(kinds, contents))
         fields = {}
@@ -1767,10 +1793,12 @@ def audit_archives(root, filenames, keyring_population=None, plan=None, dbpath=N
     module = str(Path(os.path.abspath(__file__)))
     prefix = str(boundary).rstrip('/') + '/'
     if module.startswith(prefix):
-        # After an authenticated module redirect, stock_policy reads the
-        # policy beside the future physical module.
+        # After an authenticated module redirect, stock_policy, pinned_signers
+        # and oniomarchy_admission read the policy beside the future physical
+        # module.
         future = guarded_chain(module[len(prefix):], 'PostTransaction')[-1]
-        guard_unchanged(str(Path(future).parent / 'files/stock-hooks.tsv'), 'haseen security policy')
+        for name in POLICY_FILES:
+            guard_unchanged(str(Path(future).parent / name), 'haseen security policy')
     def selector_bytes(name, view):
         """A configuration/selector file in VIEW, read through its proven
         physical directory; symlinked or non-regular selectors fail closed."""
@@ -3587,13 +3615,20 @@ def retained_link(root):
 
 VENDOR_ANCHORS = tuple('usr/share/pacman/keyrings/' + name
                        for name in ('archlinux.gpg', 'archlinux-revoked', 'cachyos.gpg', 'cachyos-revoked'))
+# haseen's security policy beside the module: the BlackArch signer set, the
+# stock-hook digests, the oniomarchy signer pin (the private source's only
+# trust root) and its fixed admission table. Consumers read some through the
+# logical layer directory and some beside the resolved module, so each one is
+# guarded at both (plan 195).
+POLICY_FILES = ('files/blackarch-signers.txt', 'files/stock-hooks.tsv',
+                'files/oniomarchy-signers.txt', 'packages/oniomarchy.tsv')
 
 
 def guarded_paths(root):
     """(path, context) haseen trusts as unchanged baseline: the module it runs
-    as root (as invoked, when inside the sysroot), its security policy where
-    each consumer reads it (signers via the logical layer directory, stock
-    hooks beside the physical module), and the base-vendor trust anchors."""
+    as root (as invoked, when inside the sysroot), its security policy
+    (POLICY_FILES) beside both the logical and the physical module, and the
+    base-vendor trust anchors."""
     paths = []
     boundary = Path(root) if root else Path('/')
     module = str(Path(os.path.abspath(__file__)))
@@ -3602,9 +3637,8 @@ def guarded_paths(root):
         module_rel = module[len(prefix):]
         paths.append((module_rel, 'the privileged haseen program'))
         physical = walk_chain(module_rel, retained_link(root))[-1]
-        for policy in sorted({str(Path(module_rel).parent / 'files/blackarch-signers.txt'),
-                              str(Path(module_rel).parent / 'files/stock-hooks.tsv'),
-                              str(Path(physical).parent / 'files/stock-hooks.tsv')}):
+        for policy in sorted({str(Path(directory).parent / name)
+                              for directory in (module_rel, physical) for name in POLICY_FILES}):
             paths.append((policy, 'haseen security policy'))
     paths.extend((anchor, 'a base-vendor trust anchor') for anchor in VENDOR_ANCHORS)
     return paths
@@ -5030,7 +5064,10 @@ def main():
                      and not forbidden(r) and expected_url not in ('', '-') and r.get('url', '').rstrip('/') == expected_url.rstrip('/')]
             print('exact' if len(match) == 1 and version not in ('', '-') else 'unknown')
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        print(str(error), file=sys.stderr)
+        # Refusals quote archive member names and other package-chosen text;
+        # the shell puts them in report rows and on the terminal, so control
+        # bytes (ESC, OSC, tab, newline) arrive escaped, never raw (plan 195).
+        print(CONTROL.sub(lambda m: '\\x%02x' % ord(m.group()), str(error)), file=sys.stderr)
         return 1
     return 0
 

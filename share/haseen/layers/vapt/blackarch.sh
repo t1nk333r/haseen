@@ -34,28 +34,43 @@ vapt_blackarch_bootstrap_steps() {
     vapt_pacman_stage || return 1
     local stage="$VAPT_STAGE/blackarch" keys="$VAPT_STAGE/blackarch/keys" fingerprint filename digest record output rc=0
     run install -d -m 0700 "$stage" "$keys" || { VAPT_MUTATION_FAILED=1; return 1; }
-    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/blackarch.db" https://blackarch.org/blackarch/blackarch/os/x86_64/blackarch.db || { VAPT_MUTATION_FAILED=1; return 1; }
+    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/blackarch.db" https://blackarch.org/blackarch/blackarch/os/x86_64/blackarch.db || {
+        VAPT_SOURCE_REASON='BlackArch database download failed'; VAPT_MUTATION_FAILED=1; return 1;
+    }
     if $DRY_RUN; then
         filename='blackarch-keyring-<discovered-version>.pkg.tar.zst'
     else
-        record="$(vapt_meta discover "$stage/blackarch.db")" || return 2
+        record="$(vapt_meta discover "$stage/blackarch.db")" || {
+            VAPT_SOURCE_REASON='no single valid blackarch-keyring record in the BlackArch database'; return 2;
+        }
         IFS=$'\t' read -r filename digest <<<"$record"
     fi
     local origin=https://blackarch.org/blackarch/blackarch/os/x86_64
-    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$filename" "$origin/$filename" || { VAPT_MUTATION_FAILED=1; return 1; }
-    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$filename.sig" "$origin/$filename.sig" || { VAPT_MUTATION_FAILED=1; return 1; }
+    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$filename" "$origin/$filename" || {
+        VAPT_SOURCE_REASON='BlackArch keyring package download failed'; VAPT_MUTATION_FAILED=1; return 1;
+    }
+    run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$filename.sig" "$origin/$filename.sig" || {
+        VAPT_SOURCE_REASON='BlackArch keyring signature download failed'; VAPT_MUTATION_FAILED=1; return 1;
+    }
     while IFS= read -r fingerprint; do
         [[ $fingerprint =~ ^[A-F0-9]{40}$ ]] || continue
-        run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$fingerprint.asc" "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fingerprint" || { VAPT_MUTATION_FAILED=1; return 1; }
+        run curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --output "$stage/$fingerprint.asc" "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$fingerprint" || {
+            VAPT_SOURCE_REASON="keyserver download of pinned BlackArch signer $fingerprint failed"; VAPT_MUTATION_FAILED=1; return 1;
+        }
         if ! $DRY_RUN; then
-            output="$(run gpg --homedir "$keys" --batch --with-colons --import-options show-only --import "$stage/$fingerprint.asc" 2>/dev/null)" || return 2
+            output="$(run gpg --homedir "$keys" --batch --with-colons --import-options show-only --import "$stage/$fingerprint.asc" 2>/dev/null)" || {
+                VAPT_SOURCE_REASON="keyserver key for pinned BlackArch signer $fingerprint is unreadable"; return 2;
+            }
             # First primary fingerprint, not a short ID or signing subkey.
             local line kind found='' waiting=false
             while IFS=: read -r kind _ _ _ _ _ _ _ _ line _; do
                 [[ $kind == pub ]] && waiting=true
                 if $waiting && [[ $kind == fpr ]]; then found="$line"; break; fi
             done <<<"$output"
-            [[ $found == "$fingerprint" ]] || return 2
+            # A different primary is what a substituted key looks like.
+            [[ $found == "$fingerprint" ]] || {
+                VAPT_SOURCE_REASON="keyserver key for pinned BlackArch signer $fingerprint has another primary fingerprint; refused"; return 2;
+            }
         fi
         run gpg --homedir "$keys" --batch --import "$stage/$fingerprint.asc" || { VAPT_MUTATION_FAILED=1; return 1; }
     done <"$VAPT_DIR/files/blackarch-signers.txt"
@@ -94,9 +109,14 @@ vapt_blackarch_bootstrap_steps() {
     local config
     config="$(vapt_meta config --local)" || return 2
     printf '%s\n' "$config" | write_user_file "$stage/commit.conf" || { VAPT_MUTATION_FAILED=1; return 1; }
-    vapt_root_exec /usr/bin/pacman-key --init || { VAPT_MUTATION_FAILED=1; return 1; }
-    vapt_root_exec /usr/bin/pacman-key --add "$stage/signer.gpg" || { VAPT_MUTATION_FAILED=1; return 1; }
-    vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_KEYRING_SIGNER" || { VAPT_MUTATION_FAILED=1; return 1; }
+    vapt_root_exec /usr/bin/pacman-key --init || { VAPT_SOURCE_REASON='pacman-key --init failed'; VAPT_MUTATION_FAILED=1; return 1; }
+    vapt_root_exec /usr/bin/pacman-key --add "$stage/signer.gpg" || {
+        VAPT_SOURCE_REASON='pacman-key --add of the BlackArch signer failed (the shared pacman keyring may hold it)'; VAPT_MUTATION_FAILED=1; return 1;
+    }
+    vapt_root_exec /usr/bin/pacman-key --lsign-key "$VAPT_KEYRING_SIGNER" || {
+        VAPT_SOURCE_REASON='BlackArch signing key imported into the shared pacman keyring (global trust changed), but pacman-key --lsign-key failed'
+        VAPT_MUTATION_FAILED=1; return 1;
+    }
     # From here the shared keyring already trusts the pinned signer: any later
     # refusal or failure is a mutation failure that says so.
     local flags=() changed='BlackArch signing key imported into the shared pacman keyring (global trust changed), but the keyring package was not installed'
@@ -200,6 +220,9 @@ vapt_blackarch_prepare() {
         VAPT_SOURCE_REASON='BlackArch activation unsupported: /etc/pacman.conf is not a single regular file; nothing changed'
         return 0
     fi
+    # The bootstrap's own reason replaces "BlackArch absent"; a step that
+    # sets none still says the bootstrap failed (plan 195).
+    VAPT_SOURCE_REASON=''
     vapt_blackarch_bootstrap || rc=$?
     if ((rc)); then
         VAPT_SOURCE_BLOCKED[blackarch]=1
@@ -213,7 +236,7 @@ vapt_blackarch_prepare() {
         VAPT_PACMAN_BLOCKED=1
         VAPT_SOURCE_BLOCKED[blackarch]=1
         local reason="${VAPT_APPLY_REASON:-}"
-        VAPT_SOURCE_REASON="full upgrade failed or safety policy rejected; all package installs blocked${reason:+: ${reason//$'\n'/ }}"
+        VAPT_SOURCE_REASON="full upgrade failed or safety policy rejected; all package installs blocked${reason:+: ${reason//[[:cntrl:]]/ }}"
         return 0
     fi
     if $DRY_RUN; then

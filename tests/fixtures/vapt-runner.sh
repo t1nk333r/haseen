@@ -81,6 +81,20 @@ pacman)
     printf 'STATE=%s\nREASON=%s\n' "${VAPT_PACMAN_STATE:-}" "${reason//$'\n'/ }"
     vapt_pacman_cleanup
     exit "$rc" ;;
+pacman-run)
+    # Several selected roots, one commit each in order, as vapt_provision
+    # applies them: VAPT_TARGET holds every root of the run.
+    [[ $1 != --yes ]] || { ASSUME_YES=true; shift; }
+    vapt_snapshot || exit $?
+    for target in "$@"; do VAPT_TARGET[$target]="$target"; done
+    worst=0
+    for target in "$@"; do
+        vapt_pacman_apply "$target"; rc=$?
+        ((rc <= worst)) || worst=$rc
+        printf 'STATE[%s]=%s\n' "$target" "${VAPT_PACMAN_STATE:-}"
+    done
+    vapt_pacman_cleanup
+    exit "$worst" ;;
 upgrade)
     ASSUME_YES=true
     vapt_snapshot || exit $?
@@ -112,9 +126,8 @@ repo-enable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac
     done
-    vapt_oniomarchy_enable_command; rc=$?
-    vapt_pacman_cleanup
-    exit "$rc" ;;
+    # The public command's own staged subshell: its traps clean up.
+    vapt_oniomarchy_enable_staged ;;
 repo-disable)
     for arg in "$@"; do
         case "$arg" in --dry-run) DRY_RUN=true ;; --yes) ASSUME_YES=true ;; esac

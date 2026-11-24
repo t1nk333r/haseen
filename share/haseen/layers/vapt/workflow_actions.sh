@@ -19,6 +19,20 @@ vapt_action_refuse_fixture() {
         return 1
     fi
 }
+# vapt_absolute_path PATH — a DIR, FILE or CERT operand as the shell would
+# read it: a leading ~ is the home directory (a prompt does not expand it) and
+# a relative path is under the working directory. `..` and control bytes stay
+# for workflow.physical to refuse (plan 195).
+vapt_absolute_path() {
+    local path="$1"
+    case "$path" in
+    '' | /*) ;;
+    \~) path="$HOME" ;;
+    \~/*) path="$HOME/${path:2}" ;;
+    *) path="$PWD/$path" ;;
+    esac
+    printf '%s' "$path"
+}
 # vapt_json_field KEY... — one value of the JSON object on stdin, following
 # nested keys; non-string values print as JSON (true, false, null).
 vapt_json_field() {
@@ -140,6 +154,7 @@ vapt_endpoint_action() {
             read -r -p 'Verified installed package-owned file: ' path || return 1
         fi
     fi
+    path="$(vapt_absolute_path "$path")"
     plan="$(vapt_actions endpoint-plan "$kind" "$address" "$port" "$path")" || return 1
     printf '%s\n' "$plan"
     # Every server and every non-loopback listener exposes something.
@@ -169,6 +184,7 @@ vapt_endpoint_action() {
 
 vapt_ca_action() {
     local verb="$1" operand="${2:-}" result fingerprint payload
+    [[ $verb != inspect && $verb != trust ]] || operand="$(vapt_absolute_path "$operand")"
     case "$verb" in
     status) vapt_actions ca-status "${CA_FLAGS[@]}" ;;
     inspect) vapt_actions inspect "$operand" "${CA_FLAGS[@]}" ;;

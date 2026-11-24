@@ -121,7 +121,10 @@ hooks. The audit distinguishes current files, incoming payloads and each
 package's pre/post scriptlet phases. A helper changed by another package
 must be safe in both snapshots; transaction-wide hooks use current and final
 snapshots. Enabled systemd-unit links are refused even without an install
-script. Replacement or conflict removals, missing old file inventories,
+script: `.wants/`, `.requires/` and `.upholds/` entries for system and user
+units (`/etc/xdg/systemd/user` included), and a unit drop-in (`*.d/*.conf`)
+that adds `Wants=`, `Requires=`, `BindsTo=`, `Upholds=`, `OnFailure=` or
+`OnSuccess=`, or whose body is a link the audit cannot read. Replacement or conflict removals, missing old file inventories,
 opaque helpers and relevant backup/NoExtract/NoUpgrade ambiguities require
 manual review and are reported unsupported; NoUpgrade-protected dropped hooks
 are still audited.
@@ -168,7 +171,8 @@ before auditing, and every archive's identity and dependency, provider,
 conflict and replacement metadata must match the reviewed plan. Each commit
 installs those exact artifacts in one local `pacman -U` transaction, with no
 live repository or provider re-resolution. A newly installed target is
-explicit and its new dependencies are marked as dependencies; an upgraded
+explicit and its new dependencies are marked as dependencies, except a
+package this run also selected as a tool, which stays explicit; an upgraded
 package, the target included, keeps its install reason. The new dependencies
 are recorded in root state (`/var/lib/haseen/vapt/reasons-pending`) before
 the commit and the record is cleared once they are marked. A bookkeeping
@@ -232,11 +236,12 @@ environment are outside this guarantee; root provisioning executables,
 root-admin authentication configuration and vendor keyrings stay trust
 anchors. This audit is not whole-machine attestation.
 
-The running metadata auditor, its stock-hook and signer policies, and the
-Arch/CachyOS vendor keyrings and revocation records are protected in the
+The running metadata auditor, its policies (the stock-hook digests, the
+BlackArch signer set, the oniomarchy signer pin and its admission table), and
+the Arch/CachyOS vendor keyrings and revocation records are protected in the
 current and future transaction views, including link targets and parent
-redirects; the stock-hook policy guard follows the physical module parent
-the auditor actually reads. Incoming changes or removals there require
+redirects; each policy is guarded beside both the logical module and the
+physical module parent the auditor actually reads. Incoming changes or removals there require
 authenticated base-repository provenance. The non-base identical-entry
 exception also keeps file permissions and file/link ownership and refuses
 incoming extended attributes. Other keyrings are ordinary package data,
@@ -544,12 +549,14 @@ A passive shell fragment adds available native/local tool-bin directories
 without launching anything or replacing system Python. It exposes
 `HASEEN_VAPT_COAE_ENV` but does not activate that environment. The layer
 seeds only an owned link to it, `~/.config/haseen/vapt/shell.sh`, and never
-creates or edits a user file such as `~/.bashrc` or `~/.zshrc`. If a command
-in one of them already sources the link (`.` or `source`, with the absolute
-path, `~`, `$HOME` or `$XDG_CONFIG_HOME`; a comment or other mention does not
-count), interactive shells pick it up. Otherwise apply and `haseen layer
-status vapt` print the line you may add yourself (with the absolute path; a
-missing line is reported, not degraded):
+creates or edits a user file such as `~/.bashrc` or `~/.zshrc`. haseen's
+shell fragment (`default/shell/init.sh`, which `haseen seed user` includes
+from those files) sources the link, so a seeded rc picks it up. So does a
+command in one of them that sources the link (`.` or `source`, with the
+absolute path, `~`, `$HOME` or `$XDG_CONFIG_HOME`; a comment or other mention
+does not count). Otherwise apply and `haseen layer status vapt` print the
+line you may add yourself (with the absolute path; a missing line is
+reported, not degraded):
 
 ```sh
 [ -r "$HOME/.config/haseen/vapt/shell.sh" ] && . "$HOME/.config/haseen/vapt/shell.sh"
@@ -652,7 +659,8 @@ page: the untranslated copy wins, otherwise the first translation by path.
 Readability is established by a confined descriptor open; showing the
 document reopens it and revalidates ownership and inode. Input and expanded
 gzip output are each capped at 4 MiB; an oversized, invalid or truncated
-document refuses with exit 1 and a diagnostic, printing nothing. Otherwise a
+document refuses with exit 1 and a diagnostic, printing nothing. Tabs are
+expanded to spaces and other control bytes removed. Otherwise a
 reviewed package/entry-specific help-only argv binding is required; the
 shipped registry is empty, so there is no `--help` guess. Missing or
 ambiguous evidence is a refusal. Dry-run reports the evidence and intended
@@ -711,7 +719,8 @@ on an explicit request; every dry-run is offline and write-free.
   evidence. Ownership covers the loaded fragment, not drop-ins.
 - `service-start ID` and `service-restart ID` ask in a terminal (`--yes`
   accepts the unknown exposure); `service-stop ID` asks nothing and needs no
-  terminal. Root authorisation is always required, ownership is rechecked
+  terminal. A verified unit whose manager state reads `unknown`
+  (`maintenance`, `refreshing`) is still acted on. Root authorisation is always required, ownership is rechecked
   right before the root gateway, and nothing is enabled, preset, initialised
   or installed. `--expect-unit UNIT --expect-fragment PATH` bind a displayed
   snapshot: a mismatch refuses before any privileged step; dry-run reports
@@ -729,7 +738,9 @@ on an explicit request; every dry-run is offline and write-free.
   terminal; `--yes` or piped input refuses. The `nc` adapter writes raw peer
   bytes, control sequences included, to the terminal.
 - `haseen vapt net-http-server [--bind ADDRESS] DIR PORT`: byte-only
-  foreground HTTP for an explicitly selected directory. Opened descriptors
+  foreground HTTP for an explicitly selected directory (a relative `DIR` or
+  `~/…`, also at the prompt, is resolved against the working directory or
+  home; `..` is refused). Opened descriptors
   confine requests; traversal, symlinks and multiply-linked files are
   refused, with the link count checked on every request. No listing, CGI,
   upload, firewall change, daemon or fetched content.
@@ -741,7 +752,9 @@ on an explicit request; every dry-run is offline and write-free.
 - Both servers need consent at an interactive terminal (`--yes` or piped
   input refuses), bind the literal address without reverse DNS, and serve
   serially with a five-second idle wait and a thirty-second absolute
-  connection deadline. A request whose `Host` is neither `localhost` nor a
+  connection deadline. A helper restarted on the same port right after a
+  download binds again (`SO_REUSEADDR`; never over a port still listening).
+  A request whose `Host` is neither `localhost` nor a
   local literal address of the bind (any local address of the family for a
   wildcard bind), or that carries several `Host` headers, gets 421, so a
   DNS-rebinding page cannot read served files; an HTTP/1.0 request without
@@ -759,7 +772,7 @@ adapter, source and selection evidence; capability records carry fixed
 
 `haseen vapt net-proxy-ca status --json` reports none, owned, foreign,
 modified or unknown (incomplete) anchor state. `inspect CERT --json` reads
-one bounded public PEM/DER CA and reports subject, issuer, uppercase SHA-256,
+(a relative `CERT` from the working directory) one bounded public PEM/DER CA and reports subject, issuer, uppercase SHA-256,
 validity and CA/private-key flags; it refuses bundles, private keys, non-CAs
 and expired material, prints no certificate contents and changes no trust.
 CA status comes only from OpenSSL's decoding of the `basicConstraints`

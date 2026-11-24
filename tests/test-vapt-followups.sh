@@ -28,8 +28,10 @@ activation_hook() { # FILE OPERATION TYPE TARGET WHEN EXEC
 
 # Ordinary service definitions and aliases do not enable a unit. Dependency
 # links do, even without an activation scriptlet or systemctl invocation.
-for directory in etc/systemd/system usr/lib/systemd/system; do
-    for relation in wants requires; do
+# systemd.unit(5) also enables through .upholds/ and reads user units from
+# /etc/xdg/systemd/user, the default $XDG_CONFIG_DIRS (plan 195).
+for directory in etc/systemd/system usr/lib/systemd/system etc/xdg/systemd/user usr/lib/systemd/user; do
+    for relation in wants requires upholds; do
         followup_case "vapt-enabled-${directory//\//-}-$relation"
         mkdir -p "$PACKAGE/$directory" "$PACKAGE/usr/lib/systemd/system"
         printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
@@ -44,6 +46,33 @@ for directory in etc/systemd/system usr/lib/systemd/system; do
         assert_status "$directory .$relation unit enables service and is refused" 1 "$STATUS"
         vapt_tools_untouched "$directory $relation"
     done
+done
+
+# A unit drop-in that adds a starting dependency enables the unit just as a
+# link does; other drop-ins (environment, limits) stay provisionable. A
+# symlinked drop-in cannot be read here and needs manual review (plan 195).
+for dropin in wants requires bindsto upholds environment symlink; do
+    followup_case "vapt-enabled-dropin-$dropin"
+    mkdir -p "$PACKAGE/usr/lib/systemd/system/multi-user.target.d"
+    printf '[Service]\nExecStart=/usr/bin/subject\n' >"$PACKAGE/usr/lib/systemd/system/subject.service"
+    expected=1
+    case "$dropin" in
+    wants) body='[Unit]\nWants=subject.service\n' ;;
+    requires) body='[Unit]\n  Requires = subject.service\n' ;;
+    bindsto) body='[Unit]\nBindsTo=subject.service\n' ;;
+    upholds) body='[Unit]\nUpholds=subject.service\n' ;;
+    environment) body='[Service]\nEnvironment=SUBJECT_WANTS=1\n'; expected=0 ;;
+    symlink) body='' ;;
+    esac
+    if [[ $dropin == symlink ]]; then
+        ln -s /etc/subject/override.conf "$PACKAGE/usr/lib/systemd/system/multi-user.target.d/subject.conf"
+    else
+        printf '%b' "$body" >"$PACKAGE/usr/lib/systemd/system/multi-user.target.d/subject.conf"
+    fi
+    repack
+    review
+    assert_status "multi-user.target.d drop-in ($dropin) is $( ((expected)) && echo refused || echo provisionable)" "$expected" "$STATUS"
+    vapt_tools_untouched "drop-in $dropin"
 done
 
 # Pre phases run CURRENT helper bytes; post phases run reviewed replacement
