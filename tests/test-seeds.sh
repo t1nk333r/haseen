@@ -254,6 +254,33 @@ assert_contains "an applied policy is left alone" "$OUTPUT" "already carries has
 assert_not_contains "and snapper is not asked to create a config" "$OUTPUT" "create-config"
 assert_not_contains "no limine unit on a machine without it" "$OUTPUT" "limine-snapper-sync"
 
+# --- system seeds: other snapper configs stay (plan 191) ---------------------
+# `snapper -c home create-config /home` appends home to the list. Writing
+# "root" alone dropped it from snapper's cleanup and omarchy-snapshot, and the
+# global timeline timer was turned off under home's hourly snapshots.
+mkdir -p "$SYS/etc/conf.d"
+printf '# snapper configs\nSNAPPER_CONFIGS="root home"\n' >"$SYS/etc/conf.d/snapper"
+capture haseen seed system --dry-run
+assert_status "a machine with a home config succeeds" 0 "$STATUS"
+assert_dry_pure "home config dry run" "$OUTPUT"
+assert_contains "a list that has root is left alone" "$OUTPUT" "/etc/conf.d/snapper already lists root"
+assert_not_contains "and is not rewritten" "$OUTPUT" "write /etc/conf.d/snapper"
+assert_not_contains "home's timeline timer is not turned off" "$OUTPUT" "disable --now snapper-timeline.timer"
+assert_contains "and the plan says why" "$OUTPUT" "snapper-timeline.timer is left as it is: home may use it"
+assert_contains "the cleanup timer still runs for every config" "$OUTPUT" \
+    "DRYRUN: sudo systemctl enable --now snapper-cleanup.timer"
+printf '# snapper configs\nSNAPPER_CONFIGS="home"\n' >"$SYS/etc/conf.d/snapper"
+capture haseen seed system --dry-run
+assert_contains "root joins a list without it" "$OUTPUT" '| SNAPPER_CONFIGS="root home"'
+assert_contains "the file's other lines stay" "$OUTPUT" '| # snapper configs'
+assert_not_contains "home's timer stays on there too" "$OUTPUT" "disable --now snapper-timeline.timer"
+printf 'SNAPPER_CONFIGS=""\n' >"$SYS/etc/conf.d/snapper"
+capture haseen seed system --dry-run
+assert_contains "an empty list gets root alone" "$OUTPUT" '| SNAPPER_CONFIGS="root"'
+assert_contains "and then the timeline timer is turned off" "$OUTPUT" \
+    "DRYRUN: sudo systemctl disable --now snapper-timeline.timer"
+command rm -f "$SYS/etc/conf.d/snapper"
+
 capture haseen seed system bogus
 assert_status "an unexpected argument is rejected" 2 "$STATUS"
 capture haseen seed system --help
