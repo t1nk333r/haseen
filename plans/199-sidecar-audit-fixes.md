@@ -18,7 +18,7 @@
   golden transcript's flaky grouping; reviewed: one Sonnet round, APPROVE
   with two nits)
 
-The audit ran at `2f7f472a`. Every finding was re-checked on `9a9e82ab`
+The audit ran at 2f7f472a (the branch of plan 182 before its squash merge). Every finding was re-checked on `9a9e82ab`
 (main with plans 182-184) before it was fixed; every one still applied, at
 the same lines. Line numbers below are at `9a9e82ab`.
 
